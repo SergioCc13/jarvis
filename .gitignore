@@ -1,0 +1,24 @@
+# Claude Code local/personal settings (not shared project config)
+.claude/settings.local.json
+hud/.claude/
+
+# Bridge secrets (token + phone session id) — generated automatically on first run
+bridge/config.json
+
+# Personal machine-specific symlink to voicemode's local event log
+hud/voicemode-logs
+
+# Personal vault content (habits, plans, reminders, notes) — keep the folders, not the data
+vault/outputs/*
+!vault/outputs/.gitkeep
+vault/raw/*
+!vault/raw/.gitkeep
+vault/wiki/*
+!vault/wiki/.gitkeep
+
+# Obsidian workspace state (machine-specific paths/window layout)
+vault/.obsidian/
+
+# Misc
+*.pyc
+__pycache__/

@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# Starts everything Jarvis needs (STT/TTS services, HUD, phone bridge) and opens
+# the voice session. Assumes WSL2 on Windows with Tailscale installed on the
+# Windows host — adjust the browser-opening and tailscale.exe calls below if
+# you're on native Linux or macOS.
+set -uo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+JARVIS_DIR="$(dirname "$SCRIPT_DIR")"
+HUD_URL="http://localhost:8791/hud/"
+HUD_LOG="/tmp/jarvis-hud.log"
+BRIDGE_LOG="/tmp/jarvis-bridge.log"
+
+echo "Arrancando servicios de voz..."
+voicemode service start whisper >/dev/null 2>&1
+voicemode service start kokoro >/dev/null 2>&1
+
+if ! curl -s -o /dev/null "$HUD_URL"; then
+  echo "Levantando el HUD en $HUD_URL"
+  (cd "$JARVIS_DIR" && nohup python3 -m http.server 8791 >"$HUD_LOG" 2>&1 &)
+  sleep 1
+fi
+
+if ! curl -s -o /dev/null http://127.0.0.1:8792/voice -X POST; then
+  echo "Levantando el bridge de voz (teléfono) en :8792"
+  (cd "$JARVIS_DIR/bridge" && nohup python3 server.py >"$BRIDGE_LOG" 2>&1 &)
+  sleep 1
+fi
+
+# Optional: phone access over Tailscale. Requires Tailscale Serve enabled once
+# in the admin console (https://login.tailscale.com/f/serve) and tailscale.exe
+# reachable on PATH from WSL.
+if command -v tailscale.exe >/dev/null 2>&1; then
+  if ! tailscale.exe serve status 2>/dev/null | grep -q ":8792"; then
+    tailscale.exe serve --bg --set-path=/voice http://127.0.0.1:8792 >/dev/null 2>&1
+    tailscale.exe serve --bg http://127.0.0.1:8791 >/dev/null 2>&1
+  fi
+fi
+
+if command -v cmd.exe >/dev/null 2>&1; then
+  if cmd.exe /c reg query "HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe" >/dev/null 2>&1 \
+    || cmd.exe /c reg query "HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\chrome.exe" >/dev/null 2>&1; then
+    cmd.exe /c start chrome "$HUD_URL" >/dev/null 2>&1 &
+  else
+    cmd.exe /c start "$HUD_URL" >/dev/null 2>&1 &
+  fi
+elif command -v xdg-open >/dev/null 2>&1; then
+  xdg-open "$HUD_URL" >/dev/null 2>&1 &
+elif command -v open >/dev/null 2>&1; then
+  open "$HUD_URL" >/dev/null 2>&1 &
+fi
+
+cd "$JARVIS_DIR"
+exec claude "jarvis on"

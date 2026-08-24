@@ -1,0 +1,1142 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JARVIS OS — HUD</title>
+<style>
+  :root{
+    --bg: #08090a;
+    --panel-bg: #0d0f11;
+    --accent: #6fae8c;
+    --accent-dim: #253b30;
+    --accent-glow: rgba(111, 174, 140, 0.22);
+    --text: #d8e6ea;
+    --text-dim: #5c7378;
+    --warn: #ff8a3d;
+    --bad: #ff4d5e;
+    --ok: #3dffb0;
+    --border: #1a2226;
+    --mono: 'JetBrains Mono', 'Consolas', 'SF Mono', Menlo, monospace;
+    --sans: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; }
+  html,body{ height:100%; overflow:hidden; }
+  body{
+    background: radial-gradient(ellipse at top, #0c1113 0%, var(--bg) 70%);
+    color: var(--text);
+    font-family: var(--sans);
+    height:100vh;
+    position:relative;
+  }
+  #bg-canvas{
+    position:fixed; inset:0;
+    width:100%; height:100%;
+    z-index:0;
+    pointer-events:none;
+  }
+  .app{
+    position:relative;
+    z-index:1;
+    display:flex;
+    flex-direction:column;
+    height:100%;
+    padding:14px;
+    gap:10px;
+  }
+
+  /* ---------- shared panel chrome ---------- */
+  .panel{
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 10px 14px;
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+    position:relative;
+    overflow:hidden;
+  }
+  .panel.active{
+    border-color: var(--accent);
+    box-shadow: 0 0 14px var(--accent-glow), inset 0 0 14px rgba(0,217,255,0.04);
+  }
+  .panel.alert{
+    border-color: var(--warn);
+    box-shadow: 0 0 14px rgba(255,138,61,0.2);
+  }
+  .panel-title{
+    font-family: var(--sans);
+    font-size: 11px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--accent);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding-bottom:6px;
+    margin-bottom:6px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink:0;
+  }
+  .panel-title .badge{
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing:0;
+  }
+  .panel-body{
+    flex:1;
+    min-height:0;
+    overflow-y:auto;
+    overflow-x:hidden;
+    display:flex;
+    flex-direction:column;
+    gap:4px;
+  }
+  .empty{
+    color: var(--text-dim);
+    font-family: var(--mono);
+    font-size: 12px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex:1;
+    text-align:center;
+    letter-spacing: 0.5px;
+  }
+
+  /* ---------- status strip ---------- */
+  .status-strip{
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    padding: 8px 16px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--panel-bg);
+  }
+  .brand{
+    font-family: var(--mono);
+    font-weight:700;
+    letter-spacing: 4px;
+    font-size: 15px;
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--accent-glow);
+  }
+  .brand span{ color: var(--text-dim); font-weight:400; letter-spacing:1px; margin-left:6px;}
+  .status-right{ display:flex; align-items:center; gap:20px; font-family: var(--mono); font-size:12px; color: var(--text-dim); }
+  .status-right .clock{ color: var(--text); font-size:14px; letter-spacing:1px; }
+  .dot{ width:7px; height:7px; border-radius:50%; display:inline-block; margin-right:6px; background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  .dot.off{ background: var(--text-dim); box-shadow:none; }
+
+  /* ---------- center stage (blob) ---------- */
+  .stage{
+    flex:1;
+    min-height:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    position:relative;
+  }
+  #panel-core{
+    width:100%;
+    height:100%;
+  }
+
+  /* ---------- icon dock (left edge) ---------- */
+  .dock{
+    position:fixed;
+    left:16px;
+    top:50%;
+    transform:translateY(-50%);
+    display:flex;
+    flex-direction:column;
+    gap:14px;
+    z-index:40;
+  }
+  .dock-icon{
+    position:relative;
+    width:46px; height:46px;
+    display:flex; align-items:center; justify-content:center;
+    background: var(--panel-bg);
+    border: 1px solid var(--border);
+    border-radius: 50%;
+    color: var(--text-dim);
+    cursor:pointer;
+    font: inherit;
+    -webkit-appearance:none;
+    transition: color .25s ease, border-color .25s ease, box-shadow .25s ease, background .25s ease;
+  }
+  .dock-icon svg{ width:20px; height:20px; }
+  .dock-icon:hover{ color: var(--text); border-color: var(--accent-dim); }
+  .dock-icon.active{
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(0,217,255,0.08);
+    box-shadow: 0 0 14px var(--accent-glow);
+  }
+  .dock-alert{
+    display:none;
+    position:absolute; top:4px; right:4px;
+    width:7px; height:7px; border-radius:50%;
+    background: var(--warn);
+    box-shadow: 0 0 6px rgba(255,138,61,0.7);
+  }
+  .dock-alert.show{ display:block; }
+
+  /* ---------- click-outside backdrop ---------- */
+  .dock-backdrop{
+    position:fixed; inset:0;
+    background: rgba(0,0,0,0.4);
+    opacity:0;
+    pointer-events:none;
+    transition: opacity .28s ease;
+    z-index:32;
+  }
+  .dock-backdrop.show{ opacity:1; pointer-events:auto; }
+
+  /* ---------- centered modal panel ---------- */
+  .side-panel{
+    position:fixed;
+    top:50%; left:50%;
+    width:90vw;
+    height:75vh;
+    padding:34px 34px 28px;
+    display:flex;
+    flex-direction:column;
+    background: linear-gradient(180deg, rgba(13,15,17,0.97), rgba(13,15,17,0.93));
+    border: 1px solid var(--border);
+    border-radius: 26px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.55);
+    transform: translate(-50%, -50%) scale(0.94);
+    opacity:0;
+    pointer-events:none;
+    transition: transform .28s cubic-bezier(.22,.9,.32,1), opacity .24s ease;
+    z-index:35;
+  }
+  .side-panel.open{ transform: translate(-50%, -50%) scale(1); opacity:1; pointer-events:auto; }
+  .side-panel .panel{ display:none; flex:1; min-height:0; background:transparent; border:none; padding:0; border-radius:0; overflow:visible; }
+  .side-panel .panel.shown{ display:flex; }
+
+  /* mini status orb — visible in the modal corner since it covers the main core */
+  .mini-core{
+    position:absolute;
+    top:16px; right:20px;
+    width:14px; height:14px;
+    border-radius:50%;
+    background: var(--text-dim);
+    box-shadow:none;
+    transition: background .3s ease, box-shadow .3s ease;
+    z-index:2;
+  }
+  .mini-core.listening,
+  .mini-core.speaking{
+    background: var(--accent);
+    box-shadow: 0 0 10px var(--accent-glow);
+  }
+
+  /* ---------- habitos panel ---------- */
+  .habit-today{
+    font-family: var(--mono);
+    font-size: 12px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-bottom:8px;
+    flex-shrink:0;
+  }
+  .chip{
+    border:1px solid var(--border);
+    border-radius:8px;
+    padding:2px 10px;
+    color: var(--ok);
+    border-color: var(--ok);
+  }
+  .chip.missing{
+    color: var(--warn);
+    border-color: var(--warn);
+  }
+  .habit-grid{
+    flex:1;
+    min-height:0;
+    display:flex;
+    flex-direction:column;
+    gap:3px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+  .habit-row{ display:flex; align-items:center; gap:8px; }
+  .habit-row .name{ width:76px; color: var(--text-dim); flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .habit-row .days{ display:flex; gap:4px; }
+  .cell{ width:16px; height:16px; border-radius:5px; border:1px solid var(--border); }
+  .cell.hit{ background: var(--accent-dim); border-color: var(--accent); }
+  .cell.today.hit{ background: var(--accent); box-shadow: 0 0 6px var(--accent-glow); }
+  .cell.today{ border-color: var(--accent); }
+  .day-labels{ display:flex; gap:4px; margin-left:84px; font-family:var(--mono); font-size:9px; color:var(--text-dim); }
+  .day-labels span{ width:16px; text-align:center; }
+
+  /* ---------- agenda panel ---------- */
+  .agenda-list{ display:flex; flex-direction:column; gap:6px; flex:1; min-height:0; justify-content:center; }
+  .agenda-item{
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+    padding:6px 8px;
+    border-radius:0;
+    border:1px solid transparent;
+  }
+  .agenda-item .rank{ font-family:var(--mono); color:var(--text-dim); font-size:11px; }
+  .agenda-item .time{ font-family:var(--mono); color:var(--accent); font-size:12px; min-width:44px; }
+  .agenda-item .task{ font-size:13px; }
+  .agenda-item.now{
+    border-color: var(--accent);
+    background: rgba(0,217,255,0.06);
+    box-shadow: 0 0 10px var(--accent-glow);
+  }
+  .agenda-item.now .rank{ color: var(--accent); }
+  .agenda-meta{ font-family:var(--mono); font-size:10px; color:var(--text-dim); margin-top:6px; flex-shrink:0; }
+
+  /* ---------- skills panel ---------- */
+  .skill-list{ display:flex; flex-direction:column; gap:5px; flex:1; justify-content:center; }
+  .skill-row{
+    display:flex; align-items:center; gap:10px;
+    font-family: var(--mono); font-size:12px;
+    padding:5px 8px; border-radius:0; border:1px solid var(--border);
+  }
+  .skill-row.running{ border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+  .skill-row .name{ width:110px; text-transform:lowercase; letter-spacing:0.5px; }
+  .skill-row .state{ width:80px; font-size:10px; letter-spacing:1px; text-transform:uppercase; }
+  .skill-row .state.running{ color: var(--accent); }
+  .skill-row .state.idle{ color: var(--text-dim); }
+  .skill-row .count{ margin-left:auto; color: var(--text-dim); }
+  .skill-row .count b{ color: var(--text); }
+
+  /* ---------- inbox/recordatorios panel ---------- */
+  .feed{ display:flex; flex-direction:column; gap:6px; flex:1; min-height:0; }
+  .feed-item{ display:flex; gap:8px; font-size:12px; align-items:baseline; }
+  .feed-item .time{ font-family:var(--mono); color:var(--accent); font-size:11px; min-width:42px; flex-shrink:0; }
+  .feed-item .src{ font-family:var(--mono); font-size:9px; color:var(--text-dim); border:1px solid var(--border); border-radius:6px; padding:0 6px; flex-shrink:0; text-transform:uppercase; }
+  .feed-item .txt{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+  /* ---------- audio strip ---------- */
+  .audio-strip{
+    flex-shrink:0;
+    display:flex;
+    align-items:center;
+    gap:18px;
+    padding: 8px 20px;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--panel-bg);
+  }
+  .core-wrap{
+    width:100%;
+    height:100%;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:10px;
+    min-height:0;
+  }
+  #core-canvas{ display:block; }
+  .core-label{
+    font-family:var(--mono); font-size:13px; letter-spacing:3px; text-transform:uppercase;
+    color: var(--text-dim);
+    transition: color 0.4s ease;
+  }
+  .core-label.active{ color: var(--accent); }
+  .audio-col{ flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+  .audio-col .label{ font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--text-dim); }
+  .audio-col .value{ font-family:var(--mono); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .audio-col .value.empty-val{ color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+  <canvas id="bg-canvas"></canvas>
+
+  <div class="app">
+    <div class="status-strip">
+      <div class="brand">JARVIS<span>OS · HUD</span></div>
+      <div class="status-right">
+        <span><span class="dot" id="feed-dot"></span><span id="feed-status">vault desconectado</span></span>
+        <span class="clock" id="clock">--:--:--</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="core-wrap" id="panel-core">
+        <canvas id="core-canvas"></canvas>
+        <span class="core-label" id="audio-state">en espera</span>
+      </div>
+    </div>
+
+    <div class="audio-strip">
+      <div class="audio-col">
+        <span class="label">Última transcripción</span>
+        <span class="value empty-val" id="audio-transcript">—</span>
+      </div>
+      <div class="audio-col" style="text-align:right;">
+        <span class="label">Última respuesta hablada</span>
+        <span class="value empty-val" id="audio-response">—</span>
+      </div>
+    </div>
+  </div>
+
+  <nav class="dock" id="dock">
+    <button class="dock-icon" type="button" data-panel="habitos" title="Hábitos" aria-label="Hábitos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="8.5"/>
+        <path d="M8.5 12.3l2.4 2.4 4.6-4.9"/>
+      </svg>
+      <span class="dock-alert" id="dock-alert-habitos"></span>
+    </button>
+    <button class="dock-icon" type="button" data-panel="agenda" title="Agenda de hoy" aria-label="Agenda de hoy">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="8.5"/>
+        <path d="M12 7.5V12l3.2 2"/>
+      </svg>
+      <span class="dock-alert" id="dock-alert-agenda"></span>
+    </button>
+    <button class="dock-icon" type="button" data-panel="skills" title="Panel de comandos" aria-label="Panel de comandos">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3.5" y="4.5" width="17" height="15" rx="2.2"/>
+        <path d="M7.5 9.5l3 2.7-3 2.7M13 15h4"/>
+      </svg>
+      <span class="dock-alert" id="dock-alert-skills"></span>
+    </button>
+    <button class="dock-icon" type="button" data-panel="feed" title="Recordatorios &amp; inbox" aria-label="Recordatorios e inbox">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 10.5a6 6 0 0 1 12 0c0 4 1.5 5.5 1.5 5.5h-15S6 14.5 6 10.5Z"/>
+        <path d="M10 19a2.2 2.2 0 0 0 4 0"/>
+      </svg>
+      <span class="dock-alert" id="dock-alert-feed"></span>
+    </button>
+  </nav>
+
+  <div class="dock-backdrop" id="dock-backdrop"></div>
+
+  <aside class="side-panel" id="side-panel">
+    <span class="mini-core" id="mini-core" title="en espera"></span>
+    <section class="panel" id="panel-habitos" data-panel="habitos">
+      <div class="panel-title">Hábitos <span class="badge" id="habitos-badge"></span></div>
+      <div class="panel-body" id="habitos-body">
+        <div class="empty">cargando…</div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-agenda" data-panel="agenda">
+      <div class="panel-title">Agenda de hoy <span class="badge" id="agenda-badge"></span></div>
+      <div class="panel-body" id="agenda-body">
+        <div class="empty">cargando…</div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-skills" data-panel="skills">
+      <div class="panel-title">Panel de comandos <span class="badge" id="skills-badge"></span></div>
+      <div class="panel-body" id="skills-body">
+        <div class="empty">cargando…</div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-feed" data-panel="feed">
+      <div class="panel-title">Recordatorios &amp; inbox <span class="badge" id="feed-badge"></span></div>
+      <div class="panel-body" id="feed-body">
+        <div class="empty">cargando…</div>
+      </div>
+    </section>
+  </aside>
+
+<script>
+const VAULT = '../vault/outputs/';
+const REFRESH_MS = 15000;
+const AUDIO_REFRESH_MS = 1500;
+const DAY_LABELS = ['L','M','X','J','V','S','D'];
+
+function pad(n){ return String(n).padStart(2,'0'); }
+function todayStr(d = new Date()){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function timeStr(d = new Date()){ return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`; }
+
+async function fetchText(path){
+  try{
+    const res = await fetch(path, { cache: 'no-store' });
+    if(!res.ok) return null;
+    return await res.text();
+  }catch(e){
+    return null;
+  }
+}
+
+/* ---------------- parsers ---------------- */
+
+// "## YYYY-MM-DD" sections followed by "- item" bullet lines
+function parseDateSections(text){
+  const sections = {};
+  if(!text) return sections;
+  let currentDate = null;
+  for(const rawLine of text.split('\n')){
+    const line = rawLine.trim();
+    const dateMatch = line.match(/^##\s+(\d{4}-\d{2}-\d{2})/);
+    if(dateMatch){
+      currentDate = dateMatch[1];
+      if(!sections[currentDate]) sections[currentDate] = [];
+      continue;
+    }
+    const bulletMatch = line.match(/^-\s+(.*)$/);
+    if(bulletMatch && currentDate){
+      sections[currentDate].push(bulletMatch[1].trim());
+    }
+  }
+  return sections;
+}
+
+// actividad.md: "- YYYY-MM-DDTHH:MM:SS skill=nombre"
+function parseActividad(text){
+  const rows = [];
+  if(!text) return rows;
+  const re = /^-\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})\s+skill=(\w+)/;
+  for(const rawLine of text.split('\n')){
+    const m = rawLine.trim().match(re);
+    if(m) rows.push({ ts: m[1], skill: m[2] });
+  }
+  return rows;
+}
+
+// "N. [HH:MM] texto" or "N. texto" numbered lines (plan.md)
+function parseNumberedList(text){
+  const items = [];
+  if(!text) return items;
+  const re = /^\d+\.\s+(?:\[(\d{2}:\d{2})\]\s*)?(.+)$/;
+  for(const rawLine of text.split('\n')){
+    const m = rawLine.trim().match(re);
+    if(m) items.push({ time: m[1] || null, text: m[2].trim() });
+  }
+  return items;
+}
+
+// "- [HH:MM] texto" or "- texto" bullet lines (inbox.md flat feed)
+function parseBulletFeed(text){
+  const items = [];
+  if(!text) return items;
+  const re = /^-\s+(?:\[(\d{2}:\d{2})\]\s*)?(.+)$/;
+  for(const rawLine of text.split('\n')){
+    const m = rawLine.trim().match(re);
+    if(m) items.push({ time: m[1] || null, text: m[2].trim() });
+  }
+  return items;
+}
+
+/* ---------------- panel: habitos ---------------- */
+
+async function renderHabitos(){
+  const body = document.getElementById('habitos-body');
+  const badge = document.getElementById('habitos-badge');
+  const panel = document.getElementById('panel-habitos');
+  const text = await fetchText(VAULT + 'habitos.md');
+  const sections = parseDateSections(text);
+  const today = todayStr();
+
+  const dates = Object.keys(sections).sort();
+  if(dates.length === 0){
+    body.innerHTML = '<div class="empty">sin registros en habitos.md</div>';
+    badge.textContent = '';
+    panel.classList.add('alert');
+    setDockAlert('habitos', true);
+    return;
+  }
+
+  // last 7 calendar days ending today
+  const days = [];
+  for(let i=6; i>=0; i--){
+    const d = new Date();
+    d.setDate(d.getDate()-i);
+    days.push(todayStr(d));
+  }
+
+  const todayHabits = new Set(sections[today] || []);
+  const recentHabitNames = new Set();
+  days.forEach(d => (sections[d]||[]).forEach(h => recentHabitNames.add(h)));
+
+  const missingToday = [...recentHabitNames].filter(h => !todayHabits.has(h));
+  const noRecordToday = !sections[today];
+
+  panel.classList.toggle('alert', noRecordToday || missingToday.length > 0);
+  panel.classList.toggle('active', !noRecordToday && missingToday.length === 0);
+  setDockAlert('habitos', noRecordToday || missingToday.length > 0);
+  badge.textContent = noRecordToday ? 'SIN REGISTRO HOY' : `${todayHabits.size} hoy`;
+
+  let html = '<div class="habit-today">';
+  if(noRecordToday){
+    html += `<span class="chip missing">nada registrado hoy</span>`;
+  }else{
+    todayHabits.forEach(h => html += `<span class="chip">${escapeHtml(h)}</span>`);
+    missingToday.forEach(h => html += `<span class="chip missing">falta: ${escapeHtml(h)}</span>`);
+  }
+  html += '</div>';
+
+  const habitNames = [...recentHabitNames].sort();
+  if(habitNames.length){
+    const jsDay = (dstr) => { const [y,m,d] = dstr.split('-').map(Number); return new Date(y, m-1, d).getDay(); };
+    html += `<div class="day-labels">${days.map(d => `<span>${DAY_LABELS[(jsDay(d)+6)%7]}</span>`).join('')}</div>`;
+    html += '<div class="habit-grid">';
+    habitNames.forEach(name => {
+      html += `<div class="habit-row"><span class="name" title="${escapeHtml(name)}">${escapeHtml(name)}</span><span class="days">`;
+      days.forEach(d => {
+        const hit = (sections[d]||[]).includes(name);
+        const isToday = d === today;
+        html += `<span class="cell${hit?' hit':''}${isToday?' today':''}" title="${d}"></span>`;
+      });
+      html += '</span></div>';
+    });
+    html += '</div>';
+  }
+
+  body.innerHTML = html;
+}
+
+/* ---------------- panel: agenda (plan) ---------------- */
+
+async function renderAgenda(){
+  const body = document.getElementById('agenda-body');
+  const badge = document.getElementById('agenda-badge');
+  const panel = document.getElementById('panel-agenda');
+  const text = await fetchText(VAULT + 'plan.md');
+
+  if(!text){
+    body.innerHTML = '<div class="empty">sin plan.md — corre la skill "plan"</div>';
+    badge.textContent = '';
+    panel.classList.remove('active');
+    setDockAlert('agenda', false);
+    return;
+  }
+
+  const headerMatch = text.match(/^#\s+Plan\s*-\s*(\d{4}-\d{2}-\d{2})/m);
+  const planDate = headerMatch ? headerMatch[1] : null;
+  const items = parseNumberedList(text);
+
+  if(items.length === 0){
+    body.innerHTML = '<div class="empty">plan.md sin tareas</div>';
+    badge.textContent = '';
+    setDockAlert('agenda', false);
+    return;
+  }
+
+  badge.textContent = planDate === todayStr() ? 'hoy' : (planDate || '');
+  panel.classList.toggle('alert', planDate !== todayStr());
+  setDockAlert('agenda', planDate !== todayStr());
+
+  const now = new Date();
+  const nowMinutes = now.getHours()*60 + now.getMinutes();
+
+  // task with time closest to (and not too far past) now is "ahora"
+  let nowIdx = -1, bestDelta = Infinity;
+  items.forEach((it, i) => {
+    if(!it.time) return;
+    const [h,m] = it.time.split(':').map(Number);
+    const mins = h*60+m;
+    const delta = nowMinutes - mins;
+    if(delta >= -15 && delta < bestDelta){ bestDelta = delta; nowIdx = i; }
+  });
+
+  let html = '<div class="agenda-list">';
+  items.forEach((it, i) => {
+    const isNow = i === nowIdx;
+    html += `<div class="agenda-item${isNow?' now':''}">`
+      + `<span class="rank">${i+1}</span>`
+      + (it.time ? `<span class="time">${it.time}</span>` : `<span class="time">&nbsp;</span>`)
+      + `<span class="task">${escapeHtml(it.text)}</span>`
+      + (isNow ? `<span class="rank" style="margin-left:auto;">AHORA</span>` : '')
+      + `</div>`;
+  });
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+/* ---------------- panel: skills / comandos ---------------- */
+
+const SKILLS = ['plan','inbox','habitos','recordatorios','vault'];
+
+async function renderSkills(){
+  const body = document.getElementById('skills-body');
+  const badge = document.getElementById('skills-badge');
+  const text = await fetchText(VAULT + 'actividad.md');
+  const rows = parseActividad(text);
+  const today = todayStr();
+  const now = Date.now();
+
+  const perSkill = {};
+  SKILLS.forEach(s => perSkill[s] = { countToday: 0, lastTs: null });
+  rows.forEach(r => {
+    if(!perSkill[r.skill]) perSkill[r.skill] = { countToday: 0, lastTs: null };
+    if(r.ts.startsWith(today)) perSkill[r.skill].countToday++;
+    if(!perSkill[r.skill].lastTs || r.ts > perSkill[r.skill].lastTs) perSkill[r.skill].lastTs = r.ts;
+  });
+
+  const totalToday = Object.values(perSkill).reduce((a,b) => a + b.countToday, 0);
+  badge.textContent = rows.length ? `${totalToday} corridas hoy` : 'sin log';
+
+  let html = '<div class="skill-list">';
+  SKILLS.forEach(name => {
+    const info = perSkill[name];
+    const lastMs = info.lastTs ? Date.parse(info.lastTs) : null;
+    const isRunning = lastMs && (now - lastMs) < 90 * 1000; // heuristic: ran in last 90s
+    html += `<div class="skill-row${isRunning?' running':''}">`
+      + `<span class="name">${name}</span>`
+      + `<span class="state ${isRunning?'running':'idle'}">${isRunning?'corriendo':'inactiva'}</span>`
+      + `<span class="count"><b>${info.countToday}</b> hoy</span>`
+      + `</div>`;
+  });
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+/* ---------------- panel: feed (recordatorios + inbox) ---------------- */
+
+async function renderFeed(){
+  const body = document.getElementById('feed-body');
+  const badge = document.getElementById('feed-badge');
+  const [recText, inboxText] = await Promise.all([
+    fetchText(VAULT + 'recordatorios.md'),
+    fetchText(VAULT + 'inbox.md'),
+  ]);
+
+  const today = todayStr();
+  const recSections = parseDateSections(recText);
+  const items = [];
+
+  Object.keys(recSections).forEach(date => {
+    recSections[date].forEach(line => {
+      const m = line.match(/^\[(\d{2}:\d{2})\]\s*(.+)$/);
+      items.push({
+        date, time: m ? m[1] : null, text: m ? m[2] : line, src: 'recordatorio'
+      });
+    });
+  });
+
+  if(inboxText){
+    const headerMatch = inboxText.match(/^#\s+Inbox\s*-\s*(\d{4}-\d{2}-\d{2})/m);
+    const inboxDate = headerMatch ? headerMatch[1] : today;
+    parseBulletFeed(inboxText).forEach(it => {
+      items.push({ date: inboxDate, time: it.time, text: it.text, src: 'inbox' });
+    });
+  }
+
+  if(items.length === 0){
+    body.innerHTML = '<div class="empty">sin recordatorios ni inbox</div>';
+    badge.textContent = '';
+    return;
+  }
+
+  items.sort((a,b) => {
+    const ka = `${a.date}T${a.time||'00:00'}`;
+    const kb = `${b.date}T${b.time||'00:00'}`;
+    return kb.localeCompare(ka);
+  });
+
+  const top = items.slice(0, 5);
+  badge.textContent = `${items.length} total`;
+
+  let html = '<div class="feed">';
+  top.forEach(it => {
+    html += `<div class="feed-item">`
+      + `<span class="time">${it.time || it.date.slice(5)}</span>`
+      + `<span class="src">${it.src}</span>`
+      + `<span class="txt" title="${escapeHtml(it.text)}">${escapeHtml(it.text)}</span>`
+      + `</div>`;
+  });
+  html += '</div>';
+  body.innerHTML = html;
+}
+
+/* ---------------- audio strip (real voicemode event log) ---------------- */
+
+function parseJsonl(text){
+  const events = [];
+  if(!text) return events;
+  for(const line of text.split('\n')){
+    const trimmed = line.trim();
+    if(!trimmed) continue;
+    try{ events.push(JSON.parse(trimmed)); }catch(e){ /* skip malformed line */ }
+  }
+  return events;
+}
+
+/* ---------------- voice core: organic blob, hand-written noise, canvas/rAF ---------------- */
+
+// deterministic-shape 2D value noise (Perlin-style: lattice hash + smoothstep + bilinear lerp).
+// Continuous everywhere, so sampling it around a closed circle (cos/sin) produces a seamless loop.
+const NOISE_PERM = (() => {
+  const p = new Uint8Array(256);
+  for(let i=0;i<256;i++) p[i] = i;
+  for(let i=255;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    const tmp = p[i]; p[i] = p[j]; p[j] = tmp;
+  }
+  return p;
+})();
+function noiseFade(t){ return t*t*t*(t*(t*6-15)+10); }
+function noiseLerp(a,b,t){ return a+(b-a)*t; }
+function noiseHash(ix, iy){ return NOISE_PERM[(NOISE_PERM[ix & 255] + iy) & 255]; }
+function noise2D(x, y){
+  const x0 = Math.floor(x), y0 = Math.floor(y);
+  const u = noiseFade(x-x0), v = noiseFade(y-y0);
+  const n00 = noiseHash(x0, y0) / 255;
+  const n10 = noiseHash(x0+1, y0) / 255;
+  const n01 = noiseHash(x0, y0+1) / 255;
+  const n11 = noiseHash(x0+1, y0+1) / 255;
+  return (noiseLerp(noiseLerp(n00,n10,u), noiseLerp(n01,n11,u), v)) * 2 - 1; // -1..1
+}
+
+const ACCENT_RGB = (() => {
+  const hex = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+  const m = hex.match(/^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i);
+  return m ? [parseInt(m[1],16), parseInt(m[2],16), parseInt(m[3],16)] : [0, 217, 255];
+})();
+
+// amp/glow expressed as ratios of baseR, so the whole shape scales cleanly with canvas size.
+// Kept deliberately subtle — this should still read as a sphere/orb, not a shapeless blob.
+const CORE_STATES = {
+  idle:      { ampNoiseR: 0.045, ampWaveR: 0,    freq1: 1.3, freq2: 3.1, timeSpeed: 0.10, waveFreq: 0, waveSpeed: 0,   breathe: 0.030, brightness: 0.42, glowR: 0.40 },
+  listening: { ampNoiseR: 0.130, ampWaveR: 0.03, freq1: 2.1, freq2: 5.4, timeSpeed: 0.50, waveFreq: 0, waveSpeed: 0,   breathe: 0.012, brightness: 0.95, glowR: 1.05 },
+  speaking:  { ampNoiseR: 0.075, ampWaveR: 0.11, freq1: 1.6, freq2: 3.0, timeSpeed: 0.30, waveFreq: 3, waveSpeed: 2.2, breathe: 0.020, brightness: 0.85, glowR: 0.90 },
+};
+const CORE_LABELS = { idle: 'en espera', listening: 'escuchando…', speaking: 'hablando…' };
+
+let coreTargetState = 'idle';
+const coreCurrent = { ...CORE_STATES.idle };
+
+function setCoreTarget(state){
+  if(coreTargetState === state) return;
+  coreTargetState = state;
+  const labelEl = document.getElementById('audio-state');
+  labelEl.textContent = CORE_LABELS[state];
+  labelEl.classList.toggle('active', state !== 'idle');
+  const miniEl = document.getElementById('mini-core');
+  miniEl.classList.remove('listening', 'speaking');
+  if(state !== 'idle') miniEl.classList.add(state);
+  miniEl.title = CORE_LABELS[state];
+}
+
+function initCore(){
+  const canvas = document.getElementById('core-canvas');
+  const panelCore = document.getElementById('panel-core');
+  const rect = panelCore.getBoundingClientRect();
+  const labelSpace = 50; // reserve room below the blob for the state label
+  // dominant, screen-filling: bounded only by available stage space (ratio-based
+  // amp/glow in CORE_STATES keeps the shape safely inside the canvas at any size)
+  const cssSize = Math.round(Math.max(260, Math.min(rect.width, rect.height - labelSpace) - 28));
+  canvas.style.width = cssSize + 'px';
+  canvas.style.height = cssSize + 'px';
+
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = cssSize * dpr;
+  canvas.height = cssSize * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const cx = cssSize/2, cy = cssSize/2, baseR = cssSize*0.26, points = 84;
+  let noiseT = 0, waveT = 0, breatheT = 0, rotT = 0, floatT = 0, lastTs = null;
+  const [r,g,b] = ACCENT_RGB;
+  const rgba = a => `rgba(${r},${g},${b},${a})`;
+
+  function frame(ts){
+    if(lastTs === null) lastTs = ts;
+    const dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+
+    const target = CORE_STATES[coreTargetState];
+    const lerpRate = 1 - Math.pow(0.02, dt); // smooth exponential ease toward target, ~0.3-0.5s to settle
+    for(const key in target){
+      coreCurrent[key] = noiseLerp(coreCurrent[key], target[key], lerpRate);
+    }
+
+    noiseT += coreCurrent.timeSpeed * dt;
+    waveT += coreCurrent.waveSpeed * dt;
+    breatheT += dt;
+    rotT += dt * 0.06;   // slow independent swirl of the noise field around the rim
+    floatT += dt;
+
+    const scale = 1 + Math.sin(breatheT * 0.9) * coreCurrent.breathe;
+    // barely-there squash/stretch driven by slow noise (not a clean sinusoid) so it never
+    // looks like a mechanical pulse — subtle enough to stay a sphere, not an amoeba
+    const squashX = 1 + noise2D(breatheT*0.05, 11.3) * 0.015;
+    const squashY = 1 + noise2D(breatheT*0.05, 47.9) * 0.015;
+    const originX = cx + Math.cos(floatT*0.17) * baseR * 0.035;
+    const originY = cy + Math.sin(floatT*0.23) * baseR * 0.05;
+
+    const pts = [];
+    for(let i=0;i<points;i++){
+      const theta = (i / points) * Math.PI * 2;
+      const nx = Math.cos(theta), ny = Math.sin(theta);
+      // sample noise in a frame rotated independently of the vertex position, so the
+      // bumps/dents visibly drift and swirl around the rim instead of just pulsing in place
+      const sx = Math.cos(theta + rotT), sy = Math.sin(theta + rotT);
+      const n1 = noise2D(sx*coreCurrent.freq1 + noiseT*0.6, sy*coreCurrent.freq1 + noiseT*1.0);
+      const n2 = noise2D(sx*coreCurrent.freq2 - noiseT*1.3, sy*coreCurrent.freq2 + noiseT*0.4) * 0.5;
+      const n3 = noise2D(sx*coreCurrent.freq2*1.9 + noiseT*2.1, sy*coreCurrent.freq2*1.9 - noiseT*1.7) * 0.12; // fine turbulence octave, subtle
+      const wave = coreCurrent.waveFreq ? Math.sin(theta*coreCurrent.waveFreq - waveT) * coreCurrent.ampWaveR*baseR : 0;
+      const r0 = (baseR + (n1+n2+n3)*coreCurrent.ampNoiseR*baseR + wave) * scale;
+      pts.push({ x: originX + nx*r0*squashX, y: originY + ny*r0*squashY });
+    }
+
+    ctx.clearRect(0, 0, cssSize, cssSize);
+
+    const bri = coreCurrent.brightness * (0.85 + (coreTargetState === 'speaking' ? Math.sin(breatheT*8)*0.15 : 0));
+
+    // soft outer halo, breathing independently — ethereal/floating ambience behind the blob
+    const haloAlpha = Math.min((0.11 + Math.sin(breatheT*0.5)*0.03) * bri, 1);
+    const halo = ctx.createRadialGradient(originX, originY, 0, originX, originY, baseR*1.85);
+    halo.addColorStop(0, rgba(haloAlpha));
+    halo.addColorStop(1, rgba(0));
+    ctx.fillStyle = halo;
+    ctx.beginPath();
+    ctx.arc(originX, originY, baseR*1.85, 0, Math.PI*2);
+    ctx.fill();
+
+    ctx.beginPath();
+    const last = pts[pts.length-1], first = pts[0];
+    let prevMid = { x:(last.x+first.x)/2, y:(last.y+first.y)/2 };
+    ctx.moveTo(prevMid.x, prevMid.y);
+    for(let i=0;i<pts.length;i++){
+      const cur = pts[i], next = pts[(i+1)%pts.length];
+      const mid = { x:(cur.x+next.x)/2, y:(cur.y+next.y)/2 };
+      ctx.quadraticCurveTo(cur.x, cur.y, mid.x, mid.y);
+    }
+    ctx.closePath();
+
+    const grad = ctx.createRadialGradient(originX, originY, 0, originX, originY, baseR*1.6);
+    grad.addColorStop(0, rgba(Math.min(bri*0.9, 1)));
+    grad.addColorStop(0.6, rgba(Math.min(bri*0.5, 1)));
+    grad.addColorStop(1, rgba(0));
+    ctx.fillStyle = grad;
+    ctx.shadowColor = rgba(Math.min(bri, 1));
+    ctx.shadowBlur = coreCurrent.glowR*baseR;
+    ctx.fill();
+    ctx.strokeStyle = rgba(Math.min(bri*0.8, 1));
+    ctx.lineWidth = 1;
+    ctx.shadowBlur = 0;
+    ctx.stroke();
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+// drives the mini status orb with the same noise field as the main core, so its
+// motion reads as organic breathing rather than a mechanical CSS pulse
+function initMiniCore(){
+  const el = document.getElementById('mini-core');
+  let t = 0, lastTs = null;
+  function frame(ts){
+    if(lastTs === null) lastTs = ts;
+    const dt = Math.min((ts - lastTs) / 1000, 0.05);
+    lastTs = ts;
+    if(coreTargetState !== 'idle'){
+      t += dt * (coreTargetState === 'speaking' ? 1.8 : 1.0);
+      const scale = 1 + (noise2D(t*0.6, 7.3)*0.5 + 0.5) * 0.32;
+      const jx = noise2D(t*0.4, 22.1) * 2.5;
+      const jy = noise2D(t*0.4, 91.7) * 2.5;
+      el.style.transform = `translate(${jx.toFixed(2)}px, ${jy.toFixed(2)}px) scale(${scale.toFixed(3)})`;
+    }else{
+      el.style.transform = 'translate(0,0) scale(1)';
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+async function renderAudio(){
+  const transcriptEl = document.getElementById('audio-transcript');
+  const responseEl = document.getElementById('audio-response');
+
+  const today = todayStr();
+  let text = await fetchText(`voicemode-logs/voicemode_events_${today}.jsonl`);
+  if(!text){
+    const y = new Date(); y.setDate(y.getDate()-1);
+    text = await fetchText(`voicemode-logs/voicemode_events_${todayStr(y)}.jsonl`);
+  }
+  const events = parseJsonl(text);
+
+  if(events.length === 0){
+    setCoreTarget('idle');
+    return;
+  }
+
+  let lastTranscript = null, lastResponse = null;
+  let lastRecordingStart = null, lastRecordingEnd = null;
+  let lastSpeakStart = null, lastSpeakEnd = null;
+  events.forEach(ev => {
+    if(ev.event_type === 'STT_COMPLETE' && ev.data && ev.data.text) lastTranscript = ev.data.text;
+    if(ev.event_type === 'TTS_START' && ev.data && ev.data.message) lastResponse = ev.data.message;
+    if(ev.event_type === 'RECORDING_START') lastRecordingStart = ev.timestamp;
+    if(ev.event_type === 'RECORDING_END') lastRecordingEnd = ev.timestamp;
+    if(ev.event_type === 'TTS_PLAYBACK_START') lastSpeakStart = ev.timestamp;
+    if(ev.event_type === 'TTS_PLAYBACK_END') lastSpeakEnd = ev.timestamp;
+  });
+
+  const speaking = !!lastSpeakStart && (!lastSpeakEnd || lastSpeakEnd < lastSpeakStart);
+  const listening = !speaking && !!lastRecordingStart && (!lastRecordingEnd || lastRecordingEnd < lastRecordingStart);
+  setCoreTarget(speaking ? 'speaking' : (listening ? 'listening' : 'idle'));
+
+  transcriptEl.textContent = lastTranscript || '—';
+  transcriptEl.classList.toggle('empty-val', !lastTranscript);
+  responseEl.textContent = lastResponse || '—';
+  responseEl.classList.toggle('empty-val', !lastResponse);
+}
+
+/* ---------------- icon dock / sliding side panel ---------------- */
+
+const DOCK_PANEL_ORDER = ['habitos', 'agenda', 'skills', 'feed'];
+let activeDockPanel = null;
+
+function setDockAlert(name, on){
+  const el = document.getElementById('dock-alert-' + name);
+  if(el) el.classList.toggle('show', !!on);
+}
+
+function closeDockPanel(){
+  activeDockPanel = null;
+  document.getElementById('side-panel').classList.remove('open');
+  document.getElementById('dock-backdrop').classList.remove('show');
+  document.querySelectorAll('.dock-icon').forEach(b => b.classList.remove('active'));
+}
+
+function openDockPanel(name){
+  activeDockPanel = name;
+  document.querySelectorAll('.side-panel .panel[data-panel]').forEach(p => {
+    p.classList.toggle('shown', p.dataset.panel === name);
+  });
+  document.querySelectorAll('.dock-icon').forEach(b => {
+    b.classList.toggle('active', b.dataset.panel === name);
+  });
+  document.getElementById('side-panel').classList.add('open');
+  document.getElementById('dock-backdrop').classList.add('show');
+}
+
+function toggleDockPanel(name){
+  if(activeDockPanel === name) closeDockPanel();
+  else openDockPanel(name);
+}
+
+function initDock(){
+  document.querySelectorAll('.dock-icon').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toggleDockPanel(btn.dataset.panel);
+    });
+  });
+  document.getElementById('dock-backdrop').addEventListener('click', closeDockPanel);
+  document.addEventListener('keydown', (e) => {
+    if(e.key === 'Escape'){ closeDockPanel(); return; }
+    if(e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const curIdx = activeDockPanel ? DOCK_PANEL_ORDER.indexOf(activeDockPanel) : -1;
+    const step = e.key === 'ArrowDown' ? 1 : -1;
+    const nextIdx = curIdx === -1
+      ? (step === 1 ? 0 : DOCK_PANEL_ORDER.length - 1)
+      : (curIdx + step + DOCK_PANEL_ORDER.length) % DOCK_PANEL_ORDER.length;
+    openDockPanel(DOCK_PANEL_ORDER[nextIdx]);
+  });
+}
+
+/* ---------------- ambient background: slow drifting glow field ---------------- */
+
+function initBackground(){
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  const [r,g,b] = ACCENT_RGB;
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  let w = 0, h = 0;
+
+  function resize(){
+    w = window.innerWidth; h = window.innerHeight;
+    canvas.width = Math.round(w*dpr);
+    canvas.height = Math.round(h*dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // positions/orbits kept in normalized 0..1 space so resize needs no extra work
+  const particles = Array.from({ length: 16 }, () => ({
+    bx: Math.random(), by: Math.random(),
+    rx: 0.10 + Math.random()*0.16,
+    ry: 0.08 + Math.random()*0.14,
+    speed: 0.018 + Math.random()*0.024,
+    dir: Math.random() < 0.5 ? 1 : -1,
+    phase: Math.random()*Math.PI*2,
+    radius: 110 + Math.random()*180,
+    alpha: 0.02 + Math.random()*0.035,
+  }));
+
+  let t = 0, lastTs = null;
+  function frame(ts){
+    if(lastTs === null) lastTs = ts;
+    const dt = Math.min((ts-lastTs)/1000, 0.05);
+    lastTs = ts;
+    t += dt;
+
+    ctx.clearRect(0, 0, w, h);
+    particles.forEach(p => {
+      const a = t*p.speed*p.dir + p.phase;
+      const cx = (p.bx + Math.cos(a)*p.rx) * w;
+      const cy = (p.by + Math.sin(a*0.85)*p.ry) * h;
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, p.radius);
+      grad.addColorStop(0, `rgba(${r},${g},${b},${p.alpha})`);
+      grad.addColorStop(1, `rgba(${r},${g},${b},0)`);
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(cx, cy, p.radius, 0, Math.PI*2);
+      ctx.fill();
+    });
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+
+/* ---------------- top status strip ---------------- */
+
+function tickClock(){
+  document.getElementById('clock').textContent = timeStr();
+}
+
+async function updateFeedStatus(){
+  const probe = await fetchText(VAULT); // directory listing; 404/network error only if unreachable
+  const dot = document.getElementById('feed-dot');
+  const label = document.getElementById('feed-status');
+  const ok = probe !== null;
+  dot.classList.toggle('off', !ok);
+  label.textContent = ok ? 'vault conectado' : 'vault sin conexión (¿servidor local corriendo?)';
+}
+
+function escapeHtml(s){
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+async function refreshAll(){
+  await Promise.all([
+    renderHabitos(),
+    renderAgenda(),
+    renderSkills(),
+    renderFeed(),
+    updateFeedStatus(),
+  ]);
+}
+
+tickClock();
+initCore();
+initMiniCore();
+initDock();
+initBackground();
+setInterval(tickClock, 1000);
+refreshAll();
+renderAudio();
+setInterval(refreshAll, REFRESH_MS);
+setInterval(renderAudio, AUDIO_REFRESH_MS);
+</script>
+</body>
+</html>
