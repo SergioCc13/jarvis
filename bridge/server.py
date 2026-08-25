@@ -23,7 +23,7 @@ BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 JARVIS_DIR = os.environ.get("JARVIS_DIR", os.path.dirname(BRIDGE_DIR))
 CONFIG_PATH = os.path.join(BRIDGE_DIR, "config.json")
 DEVICES_PATH = os.path.join(BRIDGE_DIR, "devices.json")
-TTS_VOICE = os.environ.get("JARVIS_TTS_VOICE", "af_sky")
+TTS_VOICE = os.environ.get("JARVIS_TTS_VOICE", "ef_dora")
 PORT = 8792
 
 # Load bridge/.env so JARVIS_VOICE_BACKENDS and other vars are available
