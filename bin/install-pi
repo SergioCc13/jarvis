@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Jarvis Pi installer — run this once on the Raspberry Pi after cloning the repo.
+#
+# Usage (from the Mac, when Pi is reachable via Tailscale):
+#   ssh pi@100.105.221.87 "cd /home/pi/jarvis && git pull && bash bin/install-pi"
+#
+# Or directly on the Pi:
+#   cd /home/pi/jarvis && bash bin/install-pi
+
+set -euo pipefail
+JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$JARVIS_DIR"
+PI_USER="${SUDO_USER:-${USER:-pi}}"
+
+echo "=== Jarvis Pi installer ==="
+echo "Dir: $JARVIS_DIR"
+echo "User: $PI_USER"
+echo ""
+
+# ── 1. Pull latest code ───────────────────────────────────────────────
+echo "[1/5] Pulling latest code..."
+git pull
+
+# ── 2. bridge/.env ───────────────────────────────────────────────────
+if [ ! -f bridge/.env ]; then
+  echo ""
+  echo "[2/5] bridge/.env not found."
+  echo "      Copy it from your Mac first:"
+  echo "        scp bridge/.env pi@100.105.221.87:$JARVIS_DIR/bridge/.env"
+  echo "      Then re-run this script."
+  exit 1
+else
+  echo "[2/5] bridge/.env found ✓"
+fi
+
+# ── 3. systemd services ───────────────────────────────────────────────
+echo "[3/5] Installing systemd services..."
+
+for svc in bridge/jarvis-bridge.service bridge/jarvis-telegram.service agents/jarvis-agent.service; do
+  name="$(basename "$svc")"
+  # Fix User= to match actual user
+  sed "s/^User=.*/User=$PI_USER/" "$svc" > /tmp/"$name"
+  # Fix WorkingDirectory= to actual path
+  sed -i "s|WorkingDirectory=.*|WorkingDirectory=$JARVIS_DIR|" /tmp/"$name"
+  # Fix EnvironmentFile= paths
+  sed -i "s|EnvironmentFile=.*bridge/.env|EnvironmentFile=$JARVIS_DIR/bridge/.env|" /tmp/"$name"
+  sed -i "s|EnvironmentFile=.*agents/.env|EnvironmentFile=$JARVIS_DIR/agents/.env|" /tmp/"$name"
+  sudo cp /tmp/"$name" /etc/systemd/system/"$name"
+  echo "  ✓ $name installed"
+done
+
+sudo systemctl daemon-reload
+
+for svc in jarvis-bridge jarvis-telegram; do
+  sudo systemctl enable "$svc"
+  sudo systemctl restart "$svc"
+  echo "  ✓ $svc enabled and started"
+done
+
+# ── 4. crontab ───────────────────────────────────────────────────────
+echo "[4/5] Setting up crontab..."
+
+CRON_MARKER="# === Jarvis ==="
+CRON_BLOCK="$CRON_MARKER
+# Morning brief — 8:00 AM
+0 8 * * * cd $JARVIS_DIR && bin/morning-brief >> /tmp/jarvis-brief.log 2>&1
+# Vault refresh — 7:30 AM (before brief)
+30 7 * * * cd $JARVIS_DIR && bin/vault-refresh >> /tmp/jarvis-vault.log 2>&1
+# Proactive reminders — every 30 min
+*/30 * * * * cd $JARVIS_DIR && python3 bin/check-reminders >> /tmp/jarvis-reminders.log 2>&1
+# Watchdog — every 5 min
+*/5 * * * * cd $JARVIS_DIR && python3 bin/watchdog >> /tmp/jarvis-watchdog.log 2>&1"
+
+# Remove old Jarvis block if present, then append new one
+( crontab -l 2>/dev/null | grep -v "^$CRON_MARKER" | grep -v "jarvis" ; echo "$CRON_BLOCK" ) | crontab -
+echo "  ✓ Crontab updated"
+
+# ── 5. verify ────────────────────────────────────────────────────────
+echo "[5/5] Status check..."
+echo ""
+for svc in jarvis-bridge jarvis-telegram; do
+  STATUS=$(systemctl is-active "$svc" 2>/dev/null || echo "unknown")
+  ICON="✓" && [ "$STATUS" != "active" ] && ICON="✗"
+  echo "  $ICON $svc: $STATUS"
+done
+echo ""
+echo "  Crontab:"
+crontab -l | grep -A20 "Jarvis" || echo "  (no Jarvis entries found)"
+echo ""
+echo "=== Instalación completa ==="
+echo ""
+echo "Logs en tiempo real:"
+echo "  journalctl -u jarvis-telegram -f"
+echo "  journalctl -u jarvis-bridge -f"
+echo "  tail -f /tmp/jarvis-brief.log"
