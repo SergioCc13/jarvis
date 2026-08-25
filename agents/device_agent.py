@@ -70,9 +70,13 @@ def register_with_hub():
         "token": CONFIG["token"],
         "capabilities": get_capabilities(),
     }).encode()
+    hub_token = os.environ.get("JARVIS_HUB_TOKEN", "")
+    url = f"{HUB_URL}/register"
+    if hub_token:
+        url += f"?token={hub_token}"
     try:
         req = urllib.request.Request(
-            f"{HUB_URL}/register",
+            url,
             data=payload,
             headers={"Content-Type": "application/json"},
             method="POST",
@@ -211,9 +215,9 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = self.path.split("?")[0]
+        if not self._auth():
+            return self._json(401, {"error": "unauthorized"})
         if path == "/status":
-            if not self._auth():
-                return self._json(401, {"error": "unauthorized"})
             ok, result = execute_action("get_status", {})
             return self._json(200, {"ok": ok, "result": json.loads(result) if ok else result})
         self._json(200, {

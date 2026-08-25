@@ -159,9 +159,6 @@
 <audio id="player" playsinline></audio>
 
 <script>
-// Tu PC (bridge/server.py corriendo ahí vía bin/jarvis) expuesta por Tailscale.
-// Cambiá esto si tu hostname de Tailscale para la PC es otro.
-const PC_VOICE_HOST = 'https://perseo.tailfe7913.ts.net';
 const PC_CHECK_TIMEOUT_MS = 3000;
 
 const params = new URLSearchParams(location.search);
@@ -172,6 +169,12 @@ else token = localStorage.getItem('jarvis_token') || '';
 let voiceToken = params.get('voice_token');
 if (voiceToken) localStorage.setItem('jarvis_voice_token', voiceToken);
 else voiceToken = localStorage.getItem('jarvis_voice_token') || '';
+
+// PC Tailscale hostname — set via ?voice_host= on first open, then stored locally.
+// Example: ?voice_host=https://your-pc.tailXXXXX.ts.net
+let PC_VOICE_HOST = params.get('voice_host');
+if (PC_VOICE_HOST) localStorage.setItem('jarvis_voice_host', PC_VOICE_HOST);
+else PC_VOICE_HOST = localStorage.getItem('jarvis_voice_host') || '';
 
 const messagesEl = document.getElementById('messages');
 const inputEl = document.getElementById('input');
@@ -244,6 +247,7 @@ async function send() {
 /* ---------------- voice via the PC's bridge (only when the PC is on) ---------------- */
 
 async function isPcAvailable() {
+  if (!PC_VOICE_HOST) return false;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), PC_CHECK_TIMEOUT_MS);
   try {
@@ -291,7 +295,10 @@ micBtn.addEventListener('click', async () => {
 
   if (!available) {
     voiceHintEl.textContent = '';
-    addMessage('jarvis error', 'Los servicios de voz no están activos ahora mismo — prendé tu PC (bin/jarvis) e intentá de nuevo.');
+    const msg = PC_VOICE_HOST
+      ? 'Los servicios de voz no están activos ahora mismo — prendé tu PC (bin/jarvis) e intentá de nuevo.'
+      : 'Host de voz no configurado — abre el chat con &voice_host=https://tu-pc.tailXXXX.ts.net';
+    addMessage('jarvis error', msg);
     return;
   }
 

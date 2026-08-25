@@ -77,13 +77,15 @@ curl -s "http://<ip>:8793/status?token=<token>"
 ### Starting an agent on a device
 
 ```bash
-# On the Mac / PC — from the jarvis repo directory:
-JARVIS_HUB_URL=http://<pi-tailscale-ip>:8792 \
-JARVIS_DEVICE_NAME=mac-sergio \
-python3 agents/device_agent.py
+# On the Mac / PC — copy the example env file, fill in the Pi IP and bridge token, then:
+cp agents/env.example agents/.env
+# edit agents/.env: set JARVIS_HUB_URL and JARVIS_HUB_TOKEN
+source agents/.env && python3 agents/device_agent.py
 ```
 
-The agent auto-registers with the Pi hub and starts listening on port 8793. Add it to a launchd plist (Mac) or systemd service (Linux) for auto-start on boot.
+`JARVIS_HUB_TOKEN` must match the `"token"` field in `bridge/config.json` on the Pi — the hub requires it to authenticate device registrations. The agent stores its own token in `agents/config.json` (gitignored).
+
+Add it to a launchd plist (Mac) or systemd service (Linux) for auto-start on boot.
 
 ## Phone bridge security
 

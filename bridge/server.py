@@ -196,6 +196,10 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
 
         if path == "/register":
+            qs = self.path.split("?", 1)[1] if "?" in self.path else ""
+            reg_token = urllib.parse.parse_qs(qs).get("token", [""])[0]
+            if reg_token != CONFIG["token"]:
+                return self._send_json(401, {"error": "unauthorized"})
             length = int(self.headers.get("Content-Length", 0))
             if not length:
                 return self._send_json(400, {"error": "empty body"})

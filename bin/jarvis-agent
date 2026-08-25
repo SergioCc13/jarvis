@@ -5,15 +5,18 @@
 JARVIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # ── configure these ──────────────────────────────────────────────────────────
-JARVIS_HUB_URL="${JARVIS_HUB_URL:-}"            # e.g. http://100.x.x.x:8792
+JARVIS_HUB_URL="${JARVIS_HUB_URL:-}"            # Pi Tailscale IP, e.g. http://100.x.x.x:8792
+JARVIS_HUB_TOKEN="${JARVIS_HUB_TOKEN:-}"        # bridge token from bridge/config.json on the Pi
 JARVIS_DEVICE_NAME="${JARVIS_DEVICE_NAME:-$(hostname -s)}"
 JARVIS_AGENT_PORT="${JARVIS_AGENT_PORT:-8793}"
 # ─────────────────────────────────────────────────────────────────────────────
 
-if [[ -z "$JARVIS_HUB_URL" ]]; then
-  echo "[jarvis-agent] WARNING: JARVIS_HUB_URL not set — agent won't register with Pi hub."
-  echo "  Set it in your shell profile or run:"
-  echo "  JARVIS_HUB_URL=http://<pi-ip>:8792 bin/jarvis-agent"
+if [[ -z "$JARVIS_HUB_URL" || -z "$JARVIS_HUB_TOKEN" ]]; then
+  echo "[jarvis-agent] WARNING: JARVIS_HUB_URL or JARVIS_HUB_TOKEN not set."
+  echo "  Copy agents/env.example to agents/.env, fill it in, then:"
+  echo "  source agents/.env && bin/jarvis-agent"
 fi
+
+export JARVIS_HUB_URL JARVIS_HUB_TOKEN JARVIS_DEVICE_NAME JARVIS_AGENT_PORT
 
 exec python3 "$JARVIS_DIR/agents/device_agent.py"
