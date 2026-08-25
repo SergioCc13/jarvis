@@ -97,7 +97,6 @@ Add it to a launchd plist (Mac) or systemd service (Linux) for auto-start on boo
 |---|---|---|
 | Discord | `JARVIS_DISCORD_WEBHOOK` | Text message via webhook |
 | Telegram | `JARVIS_TELEGRAM_TOKEN` + `JARVIS_TELEGRAM_CHAT_ID` | Text, or MP3 voice note if Kokoro is running |
-| Phone call | `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `TWILIO_PHONE_FROM` + `TWILIO_PHONE_TO` | Outbound call with TTS voice (Spanish, Lucía voice) |
 
 ### Sending a notification
 
@@ -136,13 +135,6 @@ Test it manually:
 ```bash
 cd /home/pi/jarvis && bash bin/morning-brief
 ```
-
-### Getting a Twilio number (for phone calls)
-
-1. Sign up at [twilio.com](https://www.twilio.com) — free trial includes $15 credit
-2. Buy a phone number (≈$1/mo) or use the free trial number
-3. Copy Account SID, Auth Token from the Console dashboard
-4. Fill in `bridge/.env`
 
 ### Getting a Telegram bot
 
