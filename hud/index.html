@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>JARVIS OS — HUD</title>
 <style>
   :root{
@@ -39,7 +39,10 @@
     display:grid;
     grid-template-rows: auto 1fr auto;
     height:100%;
-    padding: var(--gap);
+    padding: max(var(--gap), env(safe-area-inset-top))
+             max(var(--gap), env(safe-area-inset-right))
+             max(var(--gap), env(safe-area-inset-bottom))
+             max(var(--gap), env(safe-area-inset-left));
     gap: var(--gap);
   }
 
@@ -79,18 +82,80 @@
   .topbar-link:hover{ opacity:1; }
   .clock{ font-family:var(--mono); font-size:14px; letter-spacing:1px; color:var(--text); }
 
-  /* ── dashboard grid ─────────────────────────────────────────────── */
+  /* ── dashboard grid — named areas for easy responsive swap ─────── */
   .dashboard{
     display:grid;
-    grid-template-columns: 255px 1fr 255px;
+    grid-template-areas:
+      "habits  center  agenda"
+      "skills  center  feed";
+    grid-template-columns: 250px 1fr 250px;
     grid-template-rows: 1fr 1fr;
     gap: var(--gap);
     min-height:0;
   }
+  #panel-habitos{ grid-area: habits; }
+  .col-center   { grid-area: center; }
+  #panel-agenda { grid-area: agenda; }
+  #panel-skills { grid-area: skills; }
+  #panel-feed   { grid-area: feed;   }
+
   .col-center{
-    grid-row: 1 / 3;
     display:flex; flex-direction:column; gap: var(--gap);
     min-height:0;
+  }
+
+  /* ── medium: tablet / small laptop (640–1023px) ─────────────────
+     panels pair up top and bottom; orb spans full width in middle  */
+  @media (max-width:1023px){
+    .dashboard{
+      grid-template-areas:
+        "habits  agenda"
+        "center  center"
+        "skills  feed";
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto 1fr auto;
+    }
+    .orb-panel{ min-height: 200px; }
+  }
+
+  /* ── portrait / phone (< 640px) ─────────────────────────────────
+     orb at top, panels in 2 cols below, all scrollable             */
+  @media (max-width:639px){
+    html,body{ overflow:auto; height:auto; }
+    .app{
+      height:auto; min-height:100dvh;
+      grid-template-rows: auto auto auto;
+      overflow:visible;
+      padding: 6px; gap: 6px;
+    }
+    --gap: 6px; --radius: 12px;
+    .dashboard{
+      grid-template-areas:
+        "center  center"
+        "habits  agenda"
+        "skills  feed";
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: auto auto auto;
+      overflow:visible;
+    }
+    .orb-panel{ min-height:160px; max-height:220px; }
+    /* compact topbar */
+    .topbar{ padding:6px 10px; gap:10px; }
+    .brand{ font-size:12px; letter-spacing:3px; }
+    .brand span{ display:none; }
+    .clock{ font-size:12px; }
+    .topbar-sep{ display:none; }
+    /* compact panels */
+    .panel{ max-height:200px; }
+    .panel-head h2{ font-size:9px; letter-spacing:1.5px; }
+    /* compact bottombar */
+    .bottombar{ padding:5px 10px; gap:8px; flex-wrap:wrap; }
+    .bottombar-label{ display:none; }
+    .dev-item .dev-ts{ display:none; }
+    .dev-item{ font-size:9px; }
+    /* audio strip stacked */
+    .audio-strip{ grid-template-columns:1fr; gap:4px; padding:8px 12px; }
+    .audio-col:last-child{ text-align:left; }
   }
 
   /* ── shared panel chrome ─────────────────────────────────────────── */
