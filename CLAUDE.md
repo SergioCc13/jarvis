@@ -87,6 +87,53 @@ source agents/.env && python3 agents/device_agent.py
 
 Add it to a launchd plist (Mac) or systemd service (Linux) for auto-start on boot.
 
+## Modo multi-agente
+
+**Trigger**: el usuario dice o escribe `agentes:` seguido de la tarea.
+
+Ejemplos:
+- *"agentes: busca el precio de Ragavan y dime si es buen momento para vender"*
+- *"agentes: revisa mi stock de Cardmarket y baja un 10% todo lo que lleve más de 30 días sin venderse"*
+- *"agentes: investiga las cartas más vendidas de Lorcana esta semana"*
+
+**Cómo responder**: descompón la tarea en subtareas y lanza agentes especializados en paralelo usando el `Agent` tool de Claude Code. Roles estándar:
+
+| Rol | Qué hace |
+|---|---|
+| **Investigador** | Busca información — usa `python3 agents/cardmarket.py`, `python3 bin/search`, `curl` |
+| **Analista** | Evalúa los datos del investigador y saca conclusiones |
+| **Ejecutor** | Toma acciones concretas — modifica precios, envía notificaciones |
+| **Crítico** | Revisa el trabajo del resto y señala errores o mejoras |
+
+No todos los agentes son necesarios en cada tarea — usa solo los que la tarea requiera. El resultado final se envía siempre por Telegram (`python3 bridge/notify.py --no-voice "resultado"`).
+
+**Flujo tipo para Cardmarket**:
+1. Investigador busca precios con `python3 agents/cardmarket.py`
+2. Analista compara con tendencias y decide acción
+3. Ejecutor aplica cambios si el usuario lo pidió (`set-price`)
+4. Resumen → Telegram
+
+## Cardmarket (MKM API)
+
+Wrapper en `agents/cardmarket.py`. Credenciales en `agents/.env` (ver `agents/cardmarket.env.example`).
+
+```bash
+python3 agents/cardmarket.py search "Ragavan"          # buscar carta
+python3 agents/cardmarket.py search "Charizard" --game 3  # Pokémon
+python3 agents/cardmarket.py price <idProduct>         # precio guía
+python3 agents/cardmarket.py stock                     # tu stock
+python3 agents/cardmarket.py set-price <id> <precio>   # cambiar precio
+python3 agents/cardmarket.py orders                    # pedidos recientes
+```
+
+Juegos: `--game 1` Magic (defecto), `2` YuGiOh, `3` Pokémon, `6` Lorcana.
+
+Cómo obtener credenciales API:
+1. Ve a cardmarket.com → tu cuenta → Developer Tools → Create App
+2. Copia App Token + App Secret
+3. Genera Access Token + Access Secret en la misma página
+4. Añádelos a `agents/.env`
+
 ## Notifications & Morning Brief
 
 `bridge/notify.py` is the single module for sending Jarvis notifications. It supports three channels — all configured via environment variables in `bridge/.env` (copy `bridge/.env.example`).
