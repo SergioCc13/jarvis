@@ -1,0 +1,27 @@
+# Jarvis voice bridge — systemd service for the Raspberry Pi.
+#
+# Install:
+#   sudo cp bridge/jarvis-bridge.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now jarvis-bridge
+#
+# Logs:
+#   journalctl -u jarvis-bridge -f
+
+[Unit]
+Description=Jarvis Voice Bridge
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/jarvis
+ExecStart=/usr/bin/python3 bridge/server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

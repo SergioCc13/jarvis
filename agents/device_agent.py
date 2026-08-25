@@ -14,6 +14,8 @@ import os
 import socket
 import subprocess
 import sys
+import threading
+import time
 import uuid
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -22,8 +24,11 @@ AGENT_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_PATH = os.path.join(AGENT_DIR, "config.json")
 PORT = int(os.environ.get("JARVIS_AGENT_PORT", "8793"))
 HUB_URL = os.environ.get("JARVIS_HUB_URL", "")
+HUB_TOKEN = os.environ.get("JARVIS_HUB_TOKEN", "")
 DEVICE_NAME = os.environ.get("JARVIS_DEVICE_NAME", socket.gethostname())
 PLATFORM = sys.platform  # darwin | linux | win32
+
+HEARTBEAT_INTERVAL = 60   # seconds between registration retries / heartbeats
 
 
 # ── config ──────────────────────────────────────────────────────────────────
@@ -57,10 +62,8 @@ def get_tailscale_ip():
         return None
 
 
-def register_with_hub():
-    if not HUB_URL:
-        print("[agent] JARVIS_HUB_URL not set — skipping hub registration")
-        return
+def _try_register():
+    """Single registration attempt. Returns True on success."""
     ip = get_tailscale_ip() or "unknown"
     payload = json.dumps({
         "name": DEVICE_NAME,
@@ -70,21 +73,37 @@ def register_with_hub():
         "token": CONFIG["token"],
         "capabilities": get_capabilities(),
     }).encode()
-    hub_token = os.environ.get("JARVIS_HUB_TOKEN", "")
     url = f"{HUB_URL}/register"
-    if hub_token:
-        url += f"?token={hub_token}"
-    try:
-        req = urllib.request.Request(
-            url,
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        urllib.request.urlopen(req, timeout=10)
-        print(f"[agent] Registered with hub at {HUB_URL} as '{DEVICE_NAME}'")
-    except Exception as e:
-        print(f"[agent] Could not register with hub: {e}")
+    if HUB_TOKEN:
+        url += f"?token={HUB_TOKEN}"
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    urllib.request.urlopen(req, timeout=10)
+    return True
+
+
+def registration_loop():
+    """Background thread: retry registration until it succeeds, then heartbeat."""
+    if not HUB_URL:
+        print("[agent] JARVIS_HUB_URL not set — skipping hub registration")
+        return
+    registered = False
+    while True:
+        try:
+            _try_register()
+            if not registered:
+                print(f"[agent] Registered with hub at {HUB_URL} as '{DEVICE_NAME}'")
+                registered = True
+        except Exception as e:
+            if registered:
+                print(f"[agent] Hub lost, will retry: {e}")
+                registered = False
+            else:
+                print(f"[agent] Hub not reachable, retrying in {HEARTBEAT_INTERVAL}s: {e}")
+        time.sleep(HEARTBEAT_INTERVAL)
 
 
 def get_capabilities():
@@ -267,9 +286,9 @@ class Handler(BaseHTTPRequestHandler):
 # ── main ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    register_with_hub()
     print(f"[agent] Device: {DEVICE_NAME} ({PLATFORM})")
     print(f"[agent] Token:  {CONFIG['token']}")
     print(f"[agent] Listening on 0.0.0.0:{PORT}")
     print(f"[agent] Capabilities: {', '.join(get_capabilities())}")
+    threading.Thread(target=registration_loop, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
