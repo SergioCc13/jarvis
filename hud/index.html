@@ -363,6 +363,7 @@
       <div class="brand">JARVIS<span>OS · HUD</span></div>
       <div class="status-right">
         <span><span class="dot" id="feed-dot"></span><span id="feed-status">vault desconectado</span></span>
+        <a href="chat.html" id="chat-link" style="color:var(--accent);text-decoration:none;">Chat</a>
         <span class="clock" id="clock">--:--:--</span>
       </div>
     </div>
@@ -1137,6 +1138,11 @@ refreshAll();
 renderAudio();
 setInterval(refreshAll, REFRESH_MS);
 setInterval(renderAudio, AUDIO_REFRESH_MS);
+
+const savedToken = localStorage.getItem('jarvis_token');
+if (savedToken) {
+  document.getElementById('chat-link').href = 'chat.html?token=' + encodeURIComponent(savedToken);
+}
 </script>
 </body>
 </html>

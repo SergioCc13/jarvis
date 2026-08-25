@@ -4,7 +4,7 @@ A personal voice assistant built on [Claude Code](https://claude.com/claude-code
 
 - Talk to it locally through Claude Code's voice tools.
 - Watch a HUD (habits, agenda, skills, an animated voice "orb") in the browser.
-- Optionally talk to it from your phone over your Tailscale network — the phone gets its own persistent conversation, separate from your terminal session.
+- Optionally talk to it from your phone over your Tailscale network — by voice or by text, both sharing the phone's own persistent conversation, separate from your terminal session.
 
 ## How it works
 
@@ -13,6 +13,7 @@ you (voice, local mic)  ──► mcp__voicemode__converse ──► Claude Code
 you (voice, phone)      ──► hud/voice.html ──► bridge/server.py ──► Whisper STT
                                                               └──► claude -p --resume (headless session)
                                                               └──► Kokoro TTS ──► audio back to phone
+you (text, phone)       ──► hud/chat.html  ──► bridge/server.py ──► claude -p --resume (same headless session)
 ```
 
 See `CLAUDE.md` for the full layout and the "jarvis on" trigger behavior.
@@ -37,9 +38,13 @@ See `CLAUDE.md` for the full layout and the "jarvis on" trigger behavior.
    ```
    ln -s ~/.voicemode/logs/events hud/voicemode-logs
    ```
-5. (Optional, for phone access) after `bin/jarvis` has set up `tailscale serve`, open the printed bridge token + your Tailscale node's HTTPS URL on your phone:
+5. (Optional, for phone access) after `bin/jarvis` has set up `tailscale serve`, open the printed bridge token + your Tailscale node's HTTPS URL on your phone — voice:
    ```
    https://<your-tailscale-node>.ts.net/hud/voice.html?token=<token from bridge/config.json>
+   ```
+   or text chat (same token, no microphone needed):
+   ```
+   https://<your-tailscale-node>.ts.net/hud/chat.html?token=<token from bridge/config.json>
    ```
    **Read the security notes in `CLAUDE.md` before doing this** — the bridge token grants whatever Bash permissions your project's `.claude/settings.local.json` already pre-approves.
 

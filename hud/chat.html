@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JARVIS · Chat</title>
+<style>
+  :root{
+    --bg: #08090a;
+    --panel-bg: #0d0f11;
+    --accent: #6fae8c;
+    --accent-dim: #253b30;
+    --accent-glow: rgba(111, 174, 140, 0.22);
+    --text: #d8e6ea;
+    --text-dim: #5c7378;
+    --bad: #ff4d5e;
+    --border: #1a2226;
+    --mono: 'JetBrains Mono', 'Consolas', 'SF Mono', Menlo, monospace;
+    --sans: -apple-system, 'Segoe UI', system-ui, sans-serif;
+  }
+  *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color: transparent; }
+  html,body{ height:100%; overflow:hidden; }
+  body{
+    background: radial-gradient(ellipse at top, #0c1113 0%, var(--bg) 70%);
+    color: var(--text);
+    font-family: var(--sans);
+    height:100vh;
+    position:relative;
+  }
+  .app{
+    position:relative; z-index:1;
+    display:flex; flex-direction:column;
+    height:100%; max-width:520px; margin:0 auto;
+    padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+    gap:10px;
+  }
+  .brand{
+    font-family: var(--mono); font-weight:700; letter-spacing: 4px; font-size: 14px;
+    color: var(--accent); text-shadow: 0 0 10px var(--accent-glow); flex-shrink:0;
+  }
+  .brand span{ color: var(--text-dim); font-weight:400; letter-spacing:1px; margin-left:6px; }
+
+  .messages{
+    flex:1; min-height:0; overflow-y:auto;
+    display:flex; flex-direction:column; gap:10px;
+    padding: 8px 2px;
+  }
+  .msg{
+    max-width:85%; padding:10px 14px; border-radius:14px; font-size:14px; line-height:1.5;
+    white-space:pre-wrap; word-break:break-word;
+  }
+  .msg.user{
+    align-self:flex-end; background: var(--accent-dim); color: var(--text); border-bottom-right-radius:4px;
+  }
+  .msg.jarvis{
+    align-self:flex-start; background: var(--panel-bg); border:1px solid var(--border);
+    color: var(--text); border-bottom-left-radius:4px;
+  }
+  .msg.pending{ color: var(--text-dim); font-style:italic; }
+  .msg.error{ color: var(--bad); border-color: var(--bad); }
+
+  .composer{
+    flex-shrink:0; display:flex; gap:8px; align-items:flex-end;
+  }
+  #input{
+    flex:1; resize:none; max-height:120px; min-height:44px;
+    background: var(--panel-bg); border:1px solid var(--border); border-radius:12px;
+    color: var(--text); font-family: var(--sans); font-size:15px; padding:11px 14px;
+  }
+  #input:focus{ outline:none; border-color: var(--accent-dim); }
+  #send-btn{
+    flex-shrink:0; width:44px; height:44px; border-radius:12px; border:none;
+    background: var(--accent); color: var(--bg); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #send-btn:disabled{ opacity:0.5; cursor:default; }
+  #send-btn svg{ width:20px; height:20px; }
+
+  .gate{
+    position:fixed; inset:0; z-index:5;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px;
+    background: radial-gradient(ellipse at top, #0c1113 0%, var(--bg) 70%);
+    padding: 20px;
+  }
+  .gate.hidden{ display:none; }
+  .gate-icon{
+    width:64px; height:64px; border-radius:50%;
+    border:1px solid var(--border); background: var(--panel-bg);
+    display:flex; align-items:center; justify-content:center;
+    color: var(--accent); box-shadow: 0 0 18px var(--accent-glow);
+  }
+  .gate-icon svg{ width:30px; height:30px; }
+  .gate-btn{
+    font-family: var(--mono); font-size:13px; letter-spacing:1.5px; text-transform:uppercase;
+    color: var(--bg); background: var(--accent); border:none; border-radius:12px;
+    padding:14px 26px; cursor:pointer;
+  }
+  .gate-btn:active{ opacity:0.85; }
+  .gate-status{
+    font-family: var(--mono); font-size:12px; color: var(--text-dim); text-align:center; max-width:320px;
+  }
+  .gate-status.error{ color: var(--bad); }
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate">
+  <div class="gate-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2a5 5 0 0 0-5 5v3a5 5 0 0 0 10 0V7a5 5 0 0 0-5-5Z"/>
+      <path d="M7 10.5v.5a5 5 0 0 0 10 0v-.5M12 17v3M9 20h6"/>
+    </svg>
+  </div>
+  <button class="gate-btn" id="gate-btn" type="button">Desbloquear</button>
+  <div class="gate-status" id="gate-status">Verificando disponibilidad de biometría...</div>
+</div>
+
+<div class="app" id="app-main" style="display:none;">
+  <div class="brand">JARVIS<span>· CHAT</span></div>
+  <div class="messages" id="messages"></div>
+  <div class="composer">
+    <textarea id="input" rows="1" placeholder="Escribe algo..." autocomplete="off"></textarea>
+    <button id="send-btn" type="button" aria-label="Enviar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 12l16-8-6 16-2.5-6.5L4 12z"/>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+let token = params.get('token');
+if (token) localStorage.setItem('jarvis_token', token);
+else token = localStorage.getItem('jarvis_token') || '';
+
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('send-btn');
+let busy = false;
+
+function addMessage(role, text) {
+  const el = document.createElement('div');
+  el.className = 'msg ' + role;
+  el.textContent = text;
+  messagesEl.appendChild(el);
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  return el;
+}
+
+inputEl.addEventListener('input', () => {
+  inputEl.style.height = 'auto';
+  inputEl.style.height = Math.min(inputEl.scrollHeight, 120) + 'px';
+});
+inputEl.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+});
+sendBtn.addEventListener('click', send);
+
+async function send() {
+  const text = inputEl.value.trim();
+  if (!text || busy) return;
+  if (!token) {
+    addMessage('jarvis error', 'Falta el token: abre el enlace con ?token=...');
+    return;
+  }
+  busy = true;
+  sendBtn.disabled = true;
+  addMessage('user', text);
+  inputEl.value = '';
+  inputEl.style.height = 'auto';
+  const pending = addMessage('jarvis pending', 'escribiendo...');
+
+  try {
+    const resp = await fetch(`/chat?token=${encodeURIComponent(token)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    const data = await resp.json();
+    pending.classList.remove('pending');
+    if (!resp.ok) {
+      pending.classList.add('error');
+      pending.textContent = data.error || ('Error ' + resp.status);
+    } else {
+      pending.textContent = data.reply;
+    }
+  } catch (err) {
+    pending.classList.remove('pending');
+    pending.classList.add('error');
+    pending.textContent = 'Error de red: ' + err.message;
+  } finally {
+    busy = false;
+    sendBtn.disabled = false;
+    inputEl.focus();
+  }
+}
+
+/* ---------------- biometric gate (same as voice.html — client-side WebAuthn,
+   no server verification: UX protection against a lost/unlocked phone, not
+   against a leaked token used directly against the API) ---------------- */
+
+const CRED_KEY = 'jarvis_webauthn_cred_id';
+const gateEl = document.getElementById('gate');
+const appMainEl = document.getElementById('app-main');
+const gateBtn = document.getElementById('gate-btn');
+const gateStatusEl = document.getElementById('gate-status');
+
+function unlockApp() {
+  gateEl.classList.add('hidden');
+  appMainEl.style.display = 'flex';
+  inputEl.focus();
+}
+
+function b64uToBuf(b64u) {
+  const b64 = b64u.replace(/-/g, '+').replace(/_/g, '/').padEnd(b64u.length + (4 - b64u.length % 4) % 4, '=');
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf;
+}
+function bufToB64u(buf) {
+  let bin = '';
+  new Uint8Array(buf).forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+async function registerBiometric() {
+  const cred = await navigator.credentials.create({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: 'Jarvis' },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: 'jarvis-phone', displayName: 'Jarvis (teléfono)' },
+      pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: 'platform', userVerification: 'required' },
+      timeout: 60000,
+    },
+  });
+  localStorage.setItem(CRED_KEY, bufToB64u(cred.rawId));
+}
+
+async function verifyBiometric(credIdB64u) {
+  await navigator.credentials.get({
+    publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ id: b64uToBuf(credIdB64u), type: 'public-key' }],
+      userVerification: 'required',
+      timeout: 60000,
+    },
+  });
+}
+
+async function runGate() {
+  if (!token) {
+    gateStatusEl.textContent = 'Falta el token: abre el enlace con ?token=...';
+    gateStatusEl.classList.add('error');
+    gateBtn.disabled = true;
+    return;
+  }
+
+  const supported = window.PublicKeyCredential
+    && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false);
+
+  if (!supported) {
+    gateStatusEl.textContent = 'Este navegador no soporta biometría — entrando solo con el token.';
+    unlockApp();
+    return;
+  }
+
+  const storedCredId = localStorage.getItem(CRED_KEY);
+  gateBtn.textContent = storedCredId ? 'Desbloquear con Face ID / huella' : 'Registrar este teléfono';
+  gateStatusEl.textContent = storedCredId
+    ? 'Toca el botón y confirma con tu huella o rostro.'
+    : 'Primera vez aquí: registra este teléfono con tu huella o Face ID.';
+
+  gateBtn.addEventListener('click', async () => {
+    gateBtn.disabled = true;
+    gateStatusEl.classList.remove('error');
+    try {
+      const credId = localStorage.getItem(CRED_KEY);
+      if (credId) {
+        await verifyBiometric(credId);
+      } else {
+        await registerBiometric();
+      }
+      unlockApp();
+    } catch (err) {
+      gateStatusEl.textContent = 'No se pudo verificar (' + err.name + '): ' + err.message;
+      gateStatusEl.classList.add('error');
+      gateBtn.disabled = false;
+    }
+  });
+}
+
+runGate();
+</script>
+</body>
+</html>

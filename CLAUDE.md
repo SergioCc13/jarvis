@@ -10,7 +10,8 @@ When the user says or types "jarvis on", start a voice conversation session: gre
 
 - `hud/index.html` — dashboard (served via `python3 -m http.server 8791` from the repo root, viewed at `http://localhost:8791/hud/`). Reads `vault/outputs/*.md` for its panels and `hud/voicemode-logs` (a symlink you create locally, see below) for the audio/activity strip.
 - `hud/voice.html` — phone voice UI (mic button styled as the same animated orb as the HUD), talks to `bridge/server.py`.
-- `bridge/server.py` — HTTP bridge so a phone (or any browser) can have a voice conversation with Jarvis: phone audio → Whisper STT → `claude -p --resume` (its own persistent session, separate from your interactive terminal session) → Kokoro TTS → audio back. See the bridge's own security notes below before exposing it.
+- `hud/chat.html` — phone text chat UI (no microphone), also talks to `bridge/server.py`, sharing the same persistent phone session as voice.
+- `bridge/server.py` — HTTP bridge so a phone (or any browser) can talk to Jarvis by voice or text: phone audio → Whisper STT → `claude -p --resume` (its own persistent session, separate from your interactive terminal session) → Kokoro TTS → audio back (`/voice`); or phone text straight to the same `claude -p --resume` call, skipping STT/TTS (`/chat`). See the bridge's own security notes below before exposing it.
 - `bin/jarvis` — one-command launcher: starts whisper/kokoro, the HUD server, the bridge, and opens a `jarvis on` session.
 - `vault/` — where the (optional) Spanish-language skills (`plan`, `inbox`, `habitos`, `recordatorios`, `vault`) write their output. Not required to use Jarvis — the HUD just shows empty panels without them.
 

@@ -107,8 +107,42 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _send_json(self, code, obj):
+        body = json.dumps(obj).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _handle_chat(self):
+        qs = self.path.split("?", 1)[1] if "?" in self.path else ""
+        params = urllib.parse.parse_qs(qs)
+        token = (params.get("token") or [""])[0]
+        if token != CONFIG["token"]:
+            return self._send_json(401, {"error": "unauthorized"})
+
+        length = int(self.headers.get("Content-Length", 0))
+        if length <= 0:
+            return self._send_json(400, {"error": "empty request"})
+        try:
+            payload = json.loads(self.rfile.read(length))
+            text = (payload.get("text") or "").strip()
+        except (ValueError, AttributeError):
+            return self._send_json(400, {"error": "expected JSON body with a 'text' field"})
+        if not text:
+            return self._send_json(400, {"error": "empty text"})
+
+        try:
+            reply = ask_claude(text)
+        except Exception as e:
+            return self._send_json(502, {"error": f"claude failed: {e}"})
+
+        return self._send_json(200, {"reply": reply})
+
     def do_GET(self):
-        return self._send_text(200, "Jarvis voice bridge is running. POST audio to /voice?token=...")
+        return self._send_text(200, "Jarvis voice bridge is running. POST audio to /voice?token=... or JSON to /chat?token=...")
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -120,8 +154,12 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         # tailscale serve's --set-path=/voice strips that prefix before
         # forwarding, so proxied requests arrive here as "/"; direct/local
-        # requests (e.g. curl testing) still use "/voice".
+        # requests (e.g. curl testing) still use "/voice". "/chat" is routed
+        # separately (see set-path=/chat in bin/jarvis) so it never collides
+        # with the stripped "/" used by the voice path.
         path = self.path.split("?")[0]
+        if path == "/chat":
+            return self._handle_chat()
         if path not in ("/", "/voice"):
             return self._send_text(404, "not found")
 
