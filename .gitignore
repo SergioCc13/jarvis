@@ -14,6 +14,9 @@ agents/config.json
 # Device agent local env (contains Pi IP and bridge token — never commit)
 agents/.env
 
+# Notification channel credentials (Discord webhook, Telegram token, Twilio keys)
+bridge/.env
+
 # Personal machine-specific symlink to voicemode's local event log
 hud/voicemode-logs
 

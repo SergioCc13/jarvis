@@ -223,6 +223,26 @@
   .audio-col .value.empty-val{ color:var(--text-dim); }
   .audio-col:last-child{ text-align:right; }
 
+  /* ── morning brief strip ────────────────────────────────────────── */
+  .brief-strip{
+    flex-shrink:0;
+    padding:9px 14px;
+    background:var(--panel-bg); border:1px solid var(--border); border-radius:var(--radius);
+    display:flex; flex-direction:column; gap:4px;
+    transition: border-color .3s;
+  }
+  .brief-strip.loaded{ border-color:var(--accent-dim); }
+  .brief-head{ display:flex; align-items:center; gap:8px; }
+  .brief-head .label{ font-size:9px; letter-spacing:1.5px; text-transform:uppercase; color:var(--accent); }
+  .brief-head .date{ font-family:var(--mono); font-size:9px; color:var(--text-dim); margin-left:auto; }
+  .brief-text{
+    font-size:11px; color:var(--text-dim); line-height:1.55;
+    max-height:56px; overflow:hidden;
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+  }
+  .brief-text.loaded{ color:var(--text); }
+  @media (max-width:639px){ .brief-strip{ display:none; } }
+
   /* ── hábitos panel ──────────────────────────────────────────────── */
   .habit-chips{ display:flex; flex-wrap:wrap; gap:4px; margin-bottom:7px; flex-shrink:0; }
   .chip{
@@ -370,6 +390,13 @@
           <div class="label">Última respuesta</div>
           <div class="value empty-val" id="audio-response">—</div>
         </div>
+      </div>
+      <div class="brief-strip" id="brief-strip">
+        <div class="brief-head">
+          <span class="label">Brief de hoy</span>
+          <span class="date" id="brief-date">—</span>
+        </div>
+        <div class="brief-text" id="brief-text">sin brief.md — ejecuta morning-brief en el Pi</div>
       </div>
     </div>
 
@@ -693,6 +720,29 @@ async function renderFeed(){
   body.innerHTML = html;
 }
 
+/* ── morning brief ──────────────────────────────────────────────────── */
+
+async function renderBrief(){
+  const text = await fetchText(VAULT + 'brief.md');
+  const textEl = document.getElementById('brief-text');
+  const dateEl = document.getElementById('brief-date');
+  const strip  = document.getElementById('brief-strip');
+  if(!text){
+    textEl.textContent = 'sin brief.md — ejecuta morning-brief en el Pi';
+    textEl.classList.remove('loaded');
+    dateEl.textContent = '—';
+    strip.classList.remove('loaded');
+    return;
+  }
+  const dm = text.match(/^#\s+Brief\s*[—\-]\s*(\d{4}-\d{2}-\d{2})/m);
+  dateEl.textContent = dm ? dm[1] : '—';
+  const body = text.replace(/^#.*$/m,'').trim();
+  textEl.textContent = body || '(vacío)';
+  const hasBody = !!body;
+  textEl.classList.toggle('loaded', hasBody);
+  strip.classList.toggle('loaded', hasBody);
+}
+
 /* ── device status (bottombar) ──────────────────────────────────────── */
 
 async function renderDevices(){
@@ -931,7 +981,7 @@ function initLinks(){
 /* ── boot ───────────────────────────────────────────────────────────── */
 
 async function refreshAll(){
-  await Promise.all([renderHabitos(), renderAgenda(), renderSkills(), renderFeed(), updateVaultStatus()]);
+  await Promise.all([renderHabitos(), renderAgenda(), renderSkills(), renderFeed(), renderBrief(), updateVaultStatus()]);
 }
 
 tickClock();

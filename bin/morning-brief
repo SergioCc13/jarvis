@@ -1,0 +1,73 @@
+#!/usr/bin/env bash
+# Jarvis Morning Brief — generates a daily summary and distributes it.
+#
+# Install cron on the Pi (crontab -e):
+#   0 8 * * * cd /home/pi/jarvis && bin/morning-brief >> /tmp/jarvis-brief.log 2>&1
+#
+# Configure channels in bridge/.env (copy bridge/.env.example).
+# At minimum set one of: JARVIS_DISCORD_WEBHOOK, JARVIS_TELEGRAM_TOKEN, or Twilio vars.
+
+set -euo pipefail
+
+JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$JARVIS_DIR"
+
+# Load notification credentials
+if [ -f bridge/.env ]; then
+  set -a
+  # shellcheck source=/dev/null
+  source bridge/.env
+  set +a
+fi
+
+echo "[brief] $(date '+%Y-%m-%d %H:%M') — generating morning brief..."
+
+# Gather context from vault
+CONTEXT=""
+for f in vault/outputs/plan.md vault/outputs/recordatorios.md vault/outputs/habitos.md; do
+  if [ -f "$f" ]; then
+    CONTEXT="$CONTEXT
+
+--- $(basename "$f") ---
+$(tail -40 "$f")"
+  fi
+done
+
+# Build the prompt
+PROMPT="$(cat <<EOF
+Genera un resumen matutino conciso para Sergio. Habla directamente a él (segunda persona).
+
+Contexto de sus archivos:
+$CONTEXT
+
+Tu resumen debe incluir (solo si hay datos relevantes):
+1. Lo más importante del plan de hoy
+2. Recordatorios pendientes más urgentes
+3. Estado de hábitos de ayer
+4. Una frase motivadora breve al final
+
+Formato: texto limpio, sin markdown, máximo 180 palabras. En español.
+EOF
+)"
+
+# Generate brief with Claude
+BRIEF=$(claude -p "$PROMPT" --output-format text 2>/dev/null || echo "")
+
+if [ -z "$BRIEF" ]; then
+  echo "[brief] ERROR: Claude did not return a brief (is 'claude' in PATH and authenticated?)"
+  exit 1
+fi
+
+# Save to vault
+mkdir -p vault/outputs
+{
+  echo "# Brief — $(date '+%Y-%m-%d %H:%M')"
+  echo ""
+  echo "$BRIEF"
+} > vault/outputs/brief.md
+
+echo "[brief] Saved to vault/outputs/brief.md"
+
+# Distribute
+echo "$BRIEF" | python3 bridge/notify.py
+echo "[brief] Done."

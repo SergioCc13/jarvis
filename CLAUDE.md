@@ -87,6 +87,73 @@ source agents/.env && python3 agents/device_agent.py
 
 Add it to a launchd plist (Mac) or systemd service (Linux) for auto-start on boot.
 
+## Notifications & Morning Brief
+
+`bridge/notify.py` is the single module for sending Jarvis notifications. It supports three channels — all configured via environment variables in `bridge/.env` (copy `bridge/.env.example`).
+
+### Channels
+
+| Channel | Env vars needed | What it sends |
+|---|---|---|
+| Discord | `JARVIS_DISCORD_WEBHOOK` | Text message via webhook |
+| Telegram | `JARVIS_TELEGRAM_TOKEN` + `JARVIS_TELEGRAM_CHAT_ID` | Text, or MP3 voice note if Kokoro is running |
+| Phone call | `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` + `TWILIO_PHONE_FROM` + `TWILIO_PHONE_TO` | Outbound call with TTS voice (Spanish, Lucía voice) |
+
+### Sending a notification
+
+```bash
+# Send to all configured channels
+python3 bridge/notify.py "Texto del mensaje"
+
+# Send only to specific channels
+python3 bridge/notify.py --channels discord,telegram "Mensaje"
+python3 bridge/notify.py --channels call "Jarvis llamando"
+
+# Skip voice synthesis (text-only Telegram)
+python3 bridge/notify.py --no-voice "Texto plano"
+```
+
+Or from Python:
+```python
+from bridge.notify import dispatch
+dispatch("Buenos días, Sergio. Tu agenda de hoy...")
+```
+
+### Morning Brief (cron diario)
+
+`bin/morning-brief` asks Claude to generate a 180-word summary (plan, reminders, habits) and distributes it to all configured channels. The brief is also saved to `vault/outputs/brief.md` and shown in the HUD center panel.
+
+Install on the Pi:
+```bash
+# Open crontab
+crontab -e
+
+# Add line (8:00 AM every day):
+0 8 * * * cd /home/pi/jarvis && bin/morning-brief >> /tmp/jarvis-brief.log 2>&1
+```
+
+Test it manually:
+```bash
+cd /home/pi/jarvis && bash bin/morning-brief
+```
+
+### Getting a Twilio number (for phone calls)
+
+1. Sign up at [twilio.com](https://www.twilio.com) — free trial includes $15 credit
+2. Buy a phone number (≈$1/mo) or use the free trial number
+3. Copy Account SID, Auth Token from the Console dashboard
+4. Fill in `bridge/.env`
+
+### Getting a Telegram bot
+
+1. Chat with [@BotFather](https://t.me/BotFather) on Telegram → `/newbot`
+2. Copy the bot token into `JARVIS_TELEGRAM_TOKEN`
+3. Get your chat ID: send any message to the bot, then:
+   ```bash
+   curl "https://api.telegram.org/bot<TOKEN>/getUpdates"
+   ```
+   Copy the `chat.id` value into `JARVIS_TELEGRAM_CHAT_ID`
+
 ## Phone bridge security
 
 `bridge/server.py` inherits whatever Bash permissions are pre-approved in this project's `.claude/settings.local.json`. If you've approved broad rules there (e.g. `Bash(python3 *)`), anyone who obtains the bridge token can get Claude to run those commands with **no confirmation prompt**, since the bridge runs Claude headless (`-p`) and there's no one to approve/deny. Review that file before exposing the bridge beyond your own devices. `hud/voice.html` adds a client-side WebAuthn biometric gate (Face ID / fingerprint) as a UX-level protection against a lost/unlocked phone — it does **not** cryptographically verify anything server-side (no signature check), so it doesn't protect against someone who already has the token and calls the API directly.
