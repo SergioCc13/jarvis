@@ -173,6 +173,46 @@ journalctl -u jarvis-telegram -f
 
 Add `JARVIS_TG_VOICE=0` to `bridge/.env` to force text-only replies (skip Kokoro).
 
+## Proactive reminders
+
+`bin/check-reminders` reads `vault/outputs/recordatorios.md` and sends a Telegram notification for any reminder due in the next 30 minutes.
+
+```bash
+# Install cron on Pi:
+crontab -e
+# Add (every 30 minutes):
+*/30 * * * * cd /home/pi/jarvis && python3 bin/check-reminders >> /tmp/jarvis-reminders.log 2>&1
+```
+
+## Vault auto-refresh
+
+`bin/vault-refresh` re-runs all skills (plan, habitos, recordatorios, inbox) so the HUD always shows fresh data.
+
+```bash
+# Add to Pi crontab (30 min before morning brief):
+30 7 * * * cd /home/pi/jarvis && bin/vault-refresh >> /tmp/jarvis-vault.log 2>&1
+```
+
+## Health watchdog
+
+`bin/watchdog` checks the bridge (port 8792), the Telegram bot process, and device agent last-seen timestamps. Sends a Telegram alert when anything goes down or recovers.
+
+```bash
+# Add to Pi crontab (every 5 minutes):
+*/5 * * * * cd /home/pi/jarvis && python3 bin/watchdog >> /tmp/jarvis-watchdog.log 2>&1
+```
+
+## Web search
+
+`bin/search` queries DuckDuckGo's Instant Answer API (no API key required).
+
+```bash
+python3 bin/search "tiempo en Madrid mañana"
+python3 bin/search "precio del Bitcoin hoy"
+```
+
+When asked about current events, news, weather, or anything time-sensitive, use bash to call `python3 bin/search "query"` before answering.
+
 ## Phone bridge security
 
 `bridge/server.py` inherits whatever Bash permissions are pre-approved in this project's `.claude/settings.local.json`. If you've approved broad rules there (e.g. `Bash(python3 *)`), anyone who obtains the bridge token can get Claude to run those commands with **no confirmation prompt**, since the bridge runs Claude headless (`-p`) and there's no one to approve/deny. Review that file before exposing the bridge beyond your own devices. `hud/voice.html` adds a client-side WebAuthn biometric gate (Face ID / fingerprint) as a UX-level protection against a lost/unlocked phone — it does **not** cryptographically verify anything server-side (no signature check), so it doesn't protect against someone who already has the token and calls the API directly.

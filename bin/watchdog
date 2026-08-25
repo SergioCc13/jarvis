@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+"""Jarvis health watchdog — alerts via Telegram if any service goes down.
+
+Checks:
+  - Bridge HTTP server (port 8792)
+  - Telegram bot process
+  - Device agents (last_seen in devices.json)
+
+Cron on Pi (every 5 minutes):
+  */5 * * * * cd /home/pi/jarvis && python3 bin/watchdog >> /tmp/jarvis-watchdog.log 2>&1
+"""
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+from datetime import datetime, timezone
+
+JARVIS_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BRIDGE_DIR   = os.path.join(JARVIS_DIR, "bridge")
+ENV_FILE     = os.path.join(BRIDGE_DIR, ".env")
+DEVICES_FILE = os.path.join(BRIDGE_DIR, "devices.json")
+STATE_FILE   = os.path.join(BRIDGE_DIR, "watchdog_state.json")
+
+BRIDGE_URL         = "http://127.0.0.1:8792/"
+OFFLINE_MINUTES    = 5   # device considered offline after this many minutes
+
+
+def load_env():
+    env = dict(os.environ)
+    if os.path.exists(ENV_FILE):
+        with open(ENV_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env[k.strip()] = v.strip()
+    return env
+
+
+def load_state():
+    if os.path.exists(STATE_FILE):
+        with open(STATE_FILE) as f:
+            return json.load(f)
+    return {}
+
+
+def save_state(state):
+    with open(STATE_FILE, "w") as f:
+        json.dump(state, f, indent=2)
+
+
+def notify(message, env):
+    script = os.path.join(BRIDGE_DIR, "notify.py")
+    subprocess.run(
+        [sys.executable, script, "--no-voice", message],
+        env=env, timeout=15,
+    )
+
+
+def check_bridge():
+    try:
+        with urllib.request.urlopen(BRIDGE_URL, timeout=5) as resp:
+            return resp.status < 500
+    except Exception:
+        return False
+
+
+def check_telegram_bot():
+    result = subprocess.run(
+        ["pgrep", "-f", "telegram_bot.py"],
+        capture_output=True,
+    )
+    return result.returncode == 0
+
+
+def check_devices():
+    """Return list of device names that have gone offline."""
+    if not os.path.exists(DEVICES_FILE):
+        return []
+    with open(DEVICES_FILE) as f:
+        devices = json.load(f)
+    offline = []
+    now = datetime.now(timezone.utc)
+    for name, d in devices.items():
+        last = d.get("last_seen")
+        if not last:
+            continue
+        try:
+            last_dt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+            minutes_ago = (now - last_dt).total_seconds() / 60
+            if minutes_ago > OFFLINE_MINUTES:
+                offline.append((name, int(minutes_ago)))
+        except Exception:
+            pass
+    return offline
+
+
+def main():
+    env   = load_env()
+    state = load_state()
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+    alerts = []
+
+    # 1. Bridge
+    bridge_ok = check_bridge()
+    was_bridge_ok = state.get("bridge", True)
+    if not bridge_ok and was_bridge_ok:
+        alerts.append("⚠️ Bridge caído (puerto 8792 no responde)")
+    elif bridge_ok and not was_bridge_ok:
+        alerts.append("✅ Bridge recuperado")
+    state["bridge"] = bridge_ok
+    print(f"[watchdog] bridge: {'ok' if bridge_ok else 'DOWN'}")
+
+    # 2. Telegram bot
+    tg_ok = check_telegram_bot()
+    was_tg_ok = state.get("telegram_bot", True)
+    if not tg_ok and was_tg_ok:
+        alerts.append("⚠️ Telegram bot caído (telegram_bot.py no corre)")
+    elif tg_ok and not was_tg_ok:
+        alerts.append("✅ Telegram bot recuperado")
+    state["telegram_bot"] = tg_ok
+    print(f"[watchdog] telegram_bot: {'ok' if tg_ok else 'DOWN'}")
+
+    # 3. Device agents
+    offline_devices = check_devices()
+    prev_offline = set(state.get("offline_devices", []))
+    curr_offline  = {name for name, _ in offline_devices}
+
+    newly_offline = curr_offline - prev_offline
+    recovered     = prev_offline - curr_offline
+    for name in newly_offline:
+        mins = next(m for n, m in offline_devices if n == name)
+        alerts.append(f"⚠️ Dispositivo offline: {name} (hace {mins} min)")
+    for name in recovered:
+        alerts.append(f"✅ Dispositivo recuperado: {name}")
+
+    state["offline_devices"] = list(curr_offline)
+    print(f"[watchdog] offline devices: {list(curr_offline) or 'none'}")
+
+    # Send alerts
+    if alerts:
+        full_msg = f"Jarvis watchdog [{now_str}]:\n" + "\n".join(alerts)
+        print(f"[watchdog] Sending alert: {full_msg}")
+        notify(full_msg, env)
+    else:
+        print("[watchdog] All systems OK")
+
+    save_state(state)
+
+
+if __name__ == "__main__":
+    main()

@@ -26,6 +26,10 @@ TTS_VOICE      = os.environ.get("JARVIS_TTS_VOICE", "af_sky")
 VOICE_REPLIES  = os.environ.get("JARVIS_TG_VOICE", "1") == "1"
 POLL_TIMEOUT   = 30  # seconds for long-poll
 
+BRIDGE_DIR   = os.path.dirname(os.path.abspath(__file__))
+JARVIS_DIR   = os.path.dirname(BRIDGE_DIR)
+CONFIG_PATH  = os.path.join(BRIDGE_DIR, "config.json")
+
 
 # ── Telegram helpers ──────────────────────────────────────────────────
 
@@ -78,13 +82,48 @@ def send_voice(chat_id, mp3_bytes):
 
 # ── local services ────────────────────────────────────────────────────
 
+def _load_cfg():
+    if os.path.exists(CONFIG_PATH):
+        with open(CONFIG_PATH) as f:
+            return json.load(f)
+    return {}
+
+
+def _save_cfg(cfg):
+    with open(CONFIG_PATH, "w") as f:
+        json.dump(cfg, f, indent=2)
+
+
 def ask_claude(message):
-    """Pass message to claude -p, return response text."""
+    """Pass message to claude -p using the shared bridge session."""
+    cfg = _load_cfg()
+    session_id = cfg.get("session_id")
+    started    = cfg.get("session_started", False)
+
+    args = ["claude", "-p", message, "--output-format", "json"]
+    if session_id and started:
+        args += ["--resume", session_id]
+    elif session_id:
+        args += ["--session-id", session_id]
+
     result = subprocess.run(
-        ["claude", "-p", message, "--output-format", "text"],
-        capture_output=True, text=True, timeout=120,
+        args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=120,
     )
-    return (result.stdout.strip() or result.stderr.strip() or "(sin respuesta)")
+    if result.returncode != 0:
+        return f"(error claude: {result.stderr[-300:]})"
+
+    try:
+        data  = json.loads(result.stdout)
+        reply = data.get("result", "").strip()
+    except Exception:
+        reply = result.stdout.strip()
+
+    # Mark session as started so future calls use --resume
+    if session_id and not started and reply:
+        cfg["session_started"] = True
+        _save_cfg(cfg)
+
+    return reply or "(sin respuesta)"
 
 
 def synthesize(text):

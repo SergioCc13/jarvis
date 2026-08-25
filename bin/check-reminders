@@ -1,0 +1,90 @@
+#!/usr/bin/env python3
+"""Check vault/outputs/recordatorios.md for reminders due in the next 30 minutes.
+
+Cron on Pi (every 30 min):
+  */30 * * * * cd /home/pi/jarvis && python3 bin/check-reminders >> /tmp/jarvis-reminders.log 2>&1
+"""
+import json
+import os
+import subprocess
+import sys
+from datetime import datetime, timedelta
+
+JARVIS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REC_FILE   = os.path.join(JARVIS_DIR, "vault", "outputs", "recordatorios.md")
+ENV_FILE   = os.path.join(JARVIS_DIR, "bridge", ".env")
+WINDOW_MIN = 30  # minutes ahead to check
+
+
+def load_env():
+    env = dict(os.environ)
+    if os.path.exists(ENV_FILE):
+        with open(ENV_FILE) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env[k.strip()] = v.strip()
+    return env
+
+
+def parse_reminders(text, today_str):
+    """Return list of (time_str, text) for today's reminders that have a time."""
+    results = []
+    in_today = False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("## "):
+            in_today = line[3:].strip().startswith(today_str)
+            continue
+        if not in_today:
+            continue
+        if line.startswith("- "):
+            item = line[2:].strip()
+            if item.startswith("[") and "]" in item:
+                t, rest = item[1:].split("]", 1)
+                results.append((t.strip(), rest.strip()))
+    return results
+
+
+def notify(message, env):
+    notify_script = os.path.join(JARVIS_DIR, "bridge", "notify.py")
+    subprocess.run(
+        [sys.executable, notify_script, "--no-voice", message],
+        env=env, timeout=15,
+    )
+
+
+def main():
+    if not os.path.exists(REC_FILE):
+        print("[reminders] recordatorios.md not found — nothing to check")
+        return
+
+    with open(REC_FILE) as f:
+        text = f.read()
+
+    now = datetime.now()
+    today_str = now.strftime("%Y-%m-%d")
+    reminders = parse_reminders(text, today_str)
+    env = load_env()
+    sent = 0
+
+    for time_str, msg in reminders:
+        try:
+            h, m = map(int, time_str.split(":"))
+        except ValueError:
+            continue
+        reminder_dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        delta = (reminder_dt - now).total_seconds() / 60  # minutes until due
+        if -5 <= delta <= WINDOW_MIN:  # due within window (allow 5 min grace past)
+            full_msg = f"Recordatorio [{time_str}]: {msg}"
+            print(f"[reminders] → {full_msg}")
+            notify(full_msg, env)
+            sent += 1
+
+    if sent == 0:
+        print(f"[reminders] No reminders due in next {WINDOW_MIN} min")
+
+
+if __name__ == "__main__":
+    main()

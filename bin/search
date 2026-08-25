@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Quick web search using DuckDuckGo Instant Answer API — no API key needed.
+
+Usage:
+  python3 bin/search "tiempo en Madrid"
+  python3 bin/search "precio bitcoin"
+
+Returns plain text results for Jarvis to include in a response.
+Claude can call this via bash when asked about current events, weather, news, etc.
+"""
+import json
+import sys
+import urllib.parse
+import urllib.request
+
+
+def search(query: str) -> str:
+    encoded = urllib.parse.quote(query)
+    url = f"https://api.duckduckgo.com/?q={encoded}&format=json&no_html=1&skip_disambig=1"
+    req = urllib.request.Request(url, headers={"User-Agent": "Jarvis/1.0"})
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        data = json.loads(resp.read())
+
+    parts = []
+
+    # Instant answer
+    abstract = data.get("AbstractText", "").strip()
+    if abstract:
+        src = data.get("AbstractSource", "")
+        parts.append(f"{abstract} (fuente: {src})" if src else abstract)
+
+    # Answer (e.g. calculator, converter)
+    answer = data.get("Answer", "").strip()
+    if answer:
+        parts.append(answer)
+
+    # Definition
+    definition = data.get("Definition", "").strip()
+    if definition:
+        def_src = data.get("DefinitionSource", "")
+        parts.append(f"Definición ({def_src}): {definition}" if def_src else definition)
+
+    # Related topics (top 3)
+    topics = data.get("RelatedTopics", [])
+    count = 0
+    for t in topics:
+        if count >= 3:
+            break
+        text = t.get("Text", "").strip() if isinstance(t, dict) else ""
+        if text:
+            parts.append(f"• {text}")
+            count += 1
+
+    if not parts:
+        return f"No encontré resultados para: {query}"
+
+    return "\n".join(parts)
+
+
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("Uso: python3 bin/search \"tu consulta\"")
+        sys.exit(1)
+    query = " ".join(sys.argv[1:])
+    print(search(query))

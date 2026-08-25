@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Regenerate vault/outputs by running each Jarvis skill via Claude.
+# Run this before the morning brief so the HUD always shows fresh data.
+#
+# Cron on Pi (7:30 AM daily, 30 min before morning brief):
+#   30 7 * * * cd /home/pi/jarvis && bin/vault-refresh >> /tmp/jarvis-vault.log 2>&1
+
+set -euo pipefail
+
+JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$JARVIS_DIR"
+
+echo "[vault-refresh] $(date '+%Y-%m-%d %H:%M') — refreshing vault..."
+
+mkdir -p vault/outputs
+
+# Run each skill. These are Jarvis voice skills that write to vault/outputs/.
+# Claude must be authenticated and the skills must be available.
+SKILLS=("plan" "habitos" "recordatorios" "inbox")
+
+for skill in "${SKILLS[@]}"; do
+  echo "[vault-refresh] Running skill: $skill"
+  claude -p "Ejecuta el skill '$skill' para actualizar vault/outputs/${skill}.md con los datos de hoy." \
+    --output-format text > /dev/null 2>&1 && echo "[vault-refresh] ✓ $skill" || echo "[vault-refresh] ✗ $skill falló"
+done
+
+echo "[vault-refresh] Done."

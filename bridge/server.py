@@ -68,11 +68,49 @@ def save_devices(devices):
         json.dump(devices, f, indent=2)
 
 
+def _notify_async(message):
+    """Fire-and-forget notification (non-blocking)."""
+    env_file = os.path.join(BRIDGE_DIR, ".env")
+    env = dict(os.environ)
+    if os.path.exists(env_file):
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    env[k.strip()] = v.strip()
+    subprocess.Popen(
+        [sys.executable, os.path.join(BRIDGE_DIR, "notify.py"), "--no-voice", message],
+        env=env,
+    )
+
+
 def register_device(info):
     devices = load_devices()
     name = info.get("name", "unknown")
-    devices[name] = {**info, "last_seen": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    now_str = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    prev = devices.get(name)
+    is_new = prev is None
+    is_reconnect = False
+    if prev and prev.get("last_seen"):
+        try:
+            import datetime as _dt
+            last_dt = _dt.datetime.strptime(prev["last_seen"], "%Y-%m-%dT%H:%M:%SZ")
+            elapsed_min = (_dt.datetime.utcnow() - last_dt).total_seconds() / 60
+            if elapsed_min > 5:
+                is_reconnect = True
+        except Exception:
+            pass
+
+    devices[name] = {**info, "last_seen": now_str}
     save_devices(devices)
+
+    if is_new:
+        _notify_async(f"🟢 Nuevo dispositivo conectado: {name} ({info.get('platform','?')})")
+    elif is_reconnect:
+        _notify_async(f"🟢 Dispositivo reconectado: {name}")
+
     return name
 
 
