@@ -1,0 +1,28 @@
+# Jarvis Telegram bot — systemd service for the Raspberry Pi.
+#
+# Install:
+#   sudo cp bridge/jarvis-telegram.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now jarvis-telegram
+#
+# Logs:
+#   journalctl -u jarvis-telegram -f
+
+[Unit]
+Description=Jarvis Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/jarvis
+EnvironmentFile=/home/pi/jarvis/bridge/.env
+ExecStart=/usr/bin/python3 bridge/telegram_bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -154,6 +154,25 @@ cd /home/pi/jarvis && bash bin/morning-brief
    ```
    Copy the `chat.id` value into `JARVIS_TELEGRAM_CHAT_ID`
 
+### Telegram bidirectional bot
+
+`bridge/telegram_bot.py` runs on the Pi and enables two-way conversation: write to the bot → Jarvis (Claude) replies, as voice note if Kokoro is running or plain text if not.
+
+```bash
+# Test manually on the Pi:
+source bridge/.env && python3 bridge/telegram_bot.py
+
+# Install as systemd service (auto-start, auto-restart):
+sudo cp bridge/jarvis-telegram.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now jarvis-telegram
+
+# Logs:
+journalctl -u jarvis-telegram -f
+```
+
+Add `JARVIS_TG_VOICE=0` to `bridge/.env` to force text-only replies (skip Kokoro).
+
 ## Phone bridge security
 
 `bridge/server.py` inherits whatever Bash permissions are pre-approved in this project's `.claude/settings.local.json`. If you've approved broad rules there (e.g. `Bash(python3 *)`), anyone who obtains the bridge token can get Claude to run those commands with **no confirmation prompt**, since the bridge runs Claude headless (`-p`) and there's no one to approve/deny. Review that file before exposing the bridge beyond your own devices. `hud/voice.html` adds a client-side WebAuthn biometric gate (Face ID / fingerprint) as a UX-level protection against a lost/unlocked phone — it does **not** cryptographically verify anything server-side (no signature check), so it doesn't protect against someone who already has the token and calls the API directly.

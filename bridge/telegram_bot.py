@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""Jarvis Telegram bot — bidirectional conversation via long-polling.
+
+Reads JARVIS_TELEGRAM_TOKEN and JARVIS_TELEGRAM_CHAT_ID from env.
+Each incoming message is passed to `claude -p` and the reply is sent
+back as a voice note (if Kokoro is running) or plain text.
+
+Run on the Pi:
+    source bridge/.env && python3 bridge/telegram_bot.py
+
+Add JARVIS_TG_VOICE=0 to bridge/.env to force text-only replies.
+"""
+import json
+import os
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
+TOKEN          = os.environ.get("JARVIS_TELEGRAM_TOKEN", "")
+ALLOWED_ID     = int(os.environ.get("JARVIS_TELEGRAM_CHAT_ID", "0") or 0)
+KOKORO_URL     = os.environ.get("VOICEMODE_TTS_URL", "http://127.0.0.1:8880/v1/audio/speech")
+TTS_VOICE      = os.environ.get("JARVIS_TTS_VOICE", "af_sky")
+VOICE_REPLIES  = os.environ.get("JARVIS_TG_VOICE", "1") == "1"
+POLL_TIMEOUT   = 30  # seconds for long-poll
+
+
+# ── Telegram helpers ──────────────────────────────────────────────────
+
+def _tg_post(method, payload=None, data=None, content_type="application/json", timeout=35):
+    url = f"https://api.telegram.org/bot{TOKEN}/{method}"
+    if payload is not None:
+        data = json.dumps(payload).encode()
+    req = urllib.request.Request(
+        url, data=data,
+        headers={"Content-Type": content_type},
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return json.loads(resp.read())
+
+
+def get_updates(offset=None):
+    params = {"timeout": POLL_TIMEOUT, "allowed_updates": ["message"]}
+    if offset is not None:
+        params["offset"] = offset
+    return _tg_post("getUpdates", params, timeout=POLL_TIMEOUT + 10)
+
+
+def send_typing(chat_id):
+    try:
+        _tg_post("sendChatAction", {"chat_id": chat_id, "action": "typing"})
+    except Exception:
+        pass
+
+
+def send_text(chat_id, text):
+    _tg_post("sendMessage", {"chat_id": chat_id, "text": text})
+
+
+def send_voice(chat_id, mp3_bytes):
+    boundary = "----jarvistgvoice"
+    body = (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="chat_id"\r\n\r\n{chat_id}\r\n'
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="voice"; filename="reply.mp3"\r\n'
+        f"Content-Type: audio/mpeg\r\n\r\n"
+    ).encode() + mp3_bytes + f"\r\n--{boundary}--\r\n".encode()
+    _tg_post(
+        "sendVoice",
+        data=body,
+        content_type=f"multipart/form-data; boundary={boundary}",
+        timeout=40,
+    )
+
+
+# ── local services ────────────────────────────────────────────────────
+
+def ask_claude(message):
+    """Pass message to claude -p, return response text."""
+    result = subprocess.run(
+        ["claude", "-p", message, "--output-format", "text"],
+        capture_output=True, text=True, timeout=120,
+    )
+    return (result.stdout.strip() or result.stderr.strip() or "(sin respuesta)")
+
+
+def synthesize(text):
+    """Generate MP3 via local Kokoro. Returns None if unavailable."""
+    payload = json.dumps({
+        "model": "tts-1", "input": text,
+        "voice": TTS_VOICE, "response_format": "mp3",
+    }).encode()
+    req = urllib.request.Request(
+        KOKORO_URL, data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            return resp.read()
+    except Exception:
+        return None
+
+
+# ── message handler ───────────────────────────────────────────────────
+
+def handle(msg):
+    chat_id = msg["chat"]["id"]
+    text    = msg.get("text", "").strip()
+
+    if chat_id != ALLOWED_ID:
+        print(f"[tg] mensaje ignorado de chat desconocido: {chat_id}")
+        return
+
+    if not text:
+        return
+
+    if text.lower() in ("/start", "/help", "hola", "start"):
+        send_text(chat_id, "Jarvis online. ¿En qué puedo ayudarte?")
+        return
+
+    print(f"[tg] → {text[:80]}")
+    send_typing(chat_id)
+
+    reply = ask_claude(text)
+    print(f"[tg] ← {reply[:80]}")
+
+    if VOICE_REPLIES:
+        mp3 = synthesize(reply)
+        if mp3:
+            send_voice(chat_id, mp3)
+            return
+
+    send_text(chat_id, reply)
+
+
+# ── main loop ─────────────────────────────────────────────────────────
+
+def main():
+    if not TOKEN:
+        sys.exit("ERROR: JARVIS_TELEGRAM_TOKEN no configurado en bridge/.env")
+    if not ALLOWED_ID:
+        sys.exit("ERROR: JARVIS_TELEGRAM_CHAT_ID no configurado en bridge/.env")
+
+    print(f"[tg] Bot iniciado — escuchando mensajes de chat_id={ALLOWED_ID}")
+
+    offset = None
+    while True:
+        try:
+            result = get_updates(offset=offset)
+            for update in result.get("result", []):
+                offset = update["update_id"] + 1
+                if "message" in update:
+                    handle(update["message"])
+        except KeyboardInterrupt:
+            print("[tg] Detenido.")
+            break
+        except urllib.error.URLError as e:
+            print(f"[tg] Red: {e} — reintentando en 10s")
+            time.sleep(10)
+        except Exception as e:
+            print(f"[tg] Error: {e} — reintentando en 5s")
+            time.sleep(5)
+
+
+if __name__ == "__main__":
+    main()
