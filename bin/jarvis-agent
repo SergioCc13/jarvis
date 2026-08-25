@@ -1,22 +1,29 @@
 #!/usr/bin/env bash
 # Start the Jarvis device agent on this machine.
-# Edit the variables below with your Pi's Tailscale IP and a name for this device.
+# Configure via agents/.env (copy from agents/env.example and fill in values).
 
 JARVIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-# ── configure these ──────────────────────────────────────────────────────────
-JARVIS_HUB_URL="${JARVIS_HUB_URL:-}"            # Pi Tailscale IP, e.g. http://100.x.x.x:8792
-JARVIS_HUB_TOKEN="${JARVIS_HUB_TOKEN:-}"        # bridge token from bridge/config.json on the Pi
+# Load .env if present (gitignored — contains Pi IP and bridge token)
+ENV_FILE="$JARVIS_DIR/agents/.env"
+if [[ -f "$ENV_FILE" ]]; then
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+fi
+
+JARVIS_HUB_URL="${JARVIS_HUB_URL:-}"
+JARVIS_HUB_TOKEN="${JARVIS_HUB_TOKEN:-}"
 JARVIS_DEVICE_NAME="${JARVIS_DEVICE_NAME:-$(hostname -s)}"
 JARVIS_AGENT_PORT="${JARVIS_AGENT_PORT:-8793}"
-# ─────────────────────────────────────────────────────────────────────────────
 
 if [[ -z "$JARVIS_HUB_URL" || -z "$JARVIS_HUB_TOKEN" ]]; then
   echo "[jarvis-agent] WARNING: JARVIS_HUB_URL or JARVIS_HUB_TOKEN not set."
-  echo "  Copy agents/env.example to agents/.env, fill it in, then:"
-  echo "  source agents/.env && bin/jarvis-agent"
+  echo "  Edit agents/.env (copy from agents/env.example) and fill in:"
+  echo "    JARVIS_HUB_URL=http://<pi-tailscale-ip>:8792"
+  echo "    JARVIS_HUB_TOKEN=<token from bridge/config.json on the Pi>"
 fi
 
 export JARVIS_HUB_URL JARVIS_HUB_TOKEN JARVIS_DEVICE_NAME JARVIS_AGENT_PORT
 
-exec python3 "$JARVIS_DIR/agents/device_agent.py"
+exec /Library/Frameworks/Python.framework/Versions/3.11/bin/python3 \
+  "$JARVIS_DIR/agents/device_agent.py"
