@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Start the Jarvis device agent on this machine.
+# Edit the variables below with your Pi's Tailscale IP and a name for this device.
+
+JARVIS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# ── configure these ──────────────────────────────────────────────────────────
+JARVIS_HUB_URL="${JARVIS_HUB_URL:-}"            # e.g. http://100.x.x.x:8792
+JARVIS_DEVICE_NAME="${JARVIS_DEVICE_NAME:-$(hostname -s)}"
+JARVIS_AGENT_PORT="${JARVIS_AGENT_PORT:-8793}"
+# ─────────────────────────────────────────────────────────────────────────────
+
+if [[ -z "$JARVIS_HUB_URL" ]]; then
+  echo "[jarvis-agent] WARNING: JARVIS_HUB_URL not set — agent won't register with Pi hub."
+  echo "  Set it in your shell profile or run:"
+  echo "  JARVIS_HUB_URL=http://<pi-ip>:8792 bin/jarvis-agent"
+fi
+
+exec python3 "$JARVIS_DIR/agents/device_agent.py"

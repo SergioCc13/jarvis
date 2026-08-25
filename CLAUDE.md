@@ -19,6 +19,72 @@ When the user says or types "jarvis on", start a voice conversation session: gre
 
 Defaults to Spanish (`VOICEMODE_WHISPER_LANGUAGE=es` in `~/.voicemode/voicemode.env`, Spanish greeting/UI text). To run it in another language, change that env var and the greeting text mentioned above, and re-point `JARVIS_TTS_VOICE` (see `bridge/server.py`) at a Kokoro voice for your language.
 
+## Multi-device control
+
+Jarvis can control any registered device (Mac, PC, etc.) over Tailscale. Each device runs `agents/device_agent.py` which exposes a local HTTP server (default port 8793). On startup each agent registers itself with this Pi hub via `POST /register` — the hub stores the registry in `bridge/devices.json`.
+
+### Checking available devices
+
+```bash
+cat bridge/devices.json
+# or via HTTP:
+curl "http://localhost:8792/devices?token=<bridge-token>"
+```
+
+### Dispatching a command to a device
+
+Use bash + curl to reach any device agent directly. The device URL and token are in `bridge/devices.json`.
+
+```bash
+# Open an app on the Mac
+curl -s -X POST "http://<device-tailscale-ip>:8793/execute?token=<device-token>" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"open_app","params":{"app":"Spotify"}}'
+
+# Set volume
+curl -s -X POST "http://<ip>:8793/execute?token=<token>" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"volume","params":{"level":40}}'
+
+# Send a notification
+curl -s -X POST "http://<ip>:8793/execute?token=<token>" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"notify","params":{"title":"Jarvis","message":"Hola desde el Pi"}}'
+
+# Run any shell command
+curl -s -X POST "http://<ip>:8793/execute?token=<token>" \
+  -H "Content-Type: application/json" \
+  -d '{"action":"shell","params":{"cmd":"ls ~/Desktop"}}'
+
+# Get device status (battery, running apps, etc.)
+curl -s "http://<ip>:8793/status?token=<token>"
+```
+
+### Supported actions
+
+| Action | Params | Platforms |
+|---|---|---|
+| `open_app` | `app` (app name) | mac, linux |
+| `open_url` | `url` | all |
+| `volume` | `level` (0-100) | mac |
+| `mute` | `muted` (true/false) | mac |
+| `notify` | `title`, `message` | mac |
+| `screenshot` | `path` (optional) | mac |
+| `sleep` | — | mac, linux |
+| `get_status` | — | all |
+| `shell` | `cmd` | all |
+
+### Starting an agent on a device
+
+```bash
+# On the Mac / PC — from the jarvis repo directory:
+JARVIS_HUB_URL=http://<pi-tailscale-ip>:8792 \
+JARVIS_DEVICE_NAME=mac-sergio \
+python3 agents/device_agent.py
+```
+
+The agent auto-registers with the Pi hub and starts listening on port 8793. Add it to a launchd plist (Mac) or systemd service (Linux) for auto-start on boot.
+
 ## Phone bridge security
 
 `bridge/server.py` inherits whatever Bash permissions are pre-approved in this project's `.claude/settings.local.json`. If you've approved broad rules there (e.g. `Bash(python3 *)`), anyone who obtains the bridge token can get Claude to run those commands with **no confirmation prompt**, since the bridge runs Claude headless (`-p`) and there's no one to approve/deny. Review that file before exposing the bridge beyond your own devices. `hud/voice.html` adds a client-side WebAuthn biometric gate (Face ID / fingerprint) as a UX-level protection against a lost/unlocked phone — it does **not** cryptographically verify anything server-side (no signature check), so it doesn't protect against someone who already has the token and calls the API directly.

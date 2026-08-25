@@ -3,11 +3,15 @@
 
 Runs as a plain HTTP server on localhost; reached from the phone via
 `tailscale serve` HTTPS termination (mic access requires a secure context).
+
+Also acts as the Jarvis hub: device agents on Mac/PC register here via
+POST /register, and Jarvis (Claude) can list them with GET /devices.
 """
 import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -17,6 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 JARVIS_DIR = os.environ.get("JARVIS_DIR", os.path.dirname(BRIDGE_DIR))
 CONFIG_PATH = os.path.join(BRIDGE_DIR, "config.json")
+DEVICES_PATH = os.path.join(BRIDGE_DIR, "devices.json")
 WHISPER_URL = os.environ.get("VOICEMODE_STT_URL", "http://127.0.0.1:2022/v1/audio/transcriptions")
 KOKORO_URL = os.environ.get("VOICEMODE_TTS_URL", "http://127.0.0.1:8880/v1/audio/speech")
 TTS_VOICE = os.environ.get("JARVIS_TTS_VOICE", "af_sky")
@@ -48,6 +53,30 @@ def save_config(cfg):
 
 CONFIG = load_config()
 
+
+# ── device registry ──────────────────────────────────────────────────────────
+
+def load_devices():
+    if os.path.exists(DEVICES_PATH):
+        with open(DEVICES_PATH) as f:
+            return json.load(f)
+    return {}
+
+
+def save_devices(devices):
+    with open(DEVICES_PATH, "w") as f:
+        json.dump(devices, f, indent=2)
+
+
+def register_device(info):
+    devices = load_devices()
+    name = info.get("name", "unknown")
+    devices[name] = {**info, "last_seen": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    save_devices(devices)
+    return name
+
+
+# ── audio / claude ───────────────────────────────────────────────────────────
 
 def transcribe(audio_bytes, content_type):
     boundary = "----jarvisbridgeboundary"
@@ -142,6 +171,13 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json(200, {"reply": reply})
 
     def do_GET(self):
+        path = self.path.split("?")[0]
+        if path == "/devices":
+            qs = self.path.split("?", 1)[1] if "?" in self.path else ""
+            token = urllib.parse.parse_qs(qs).get("token", [""])[0]
+            if token != CONFIG["token"]:
+                return self._send_json(401, {"error": "unauthorized"})
+            return self._send_json(200, load_devices())
         return self._send_text(200, "Jarvis voice bridge is running. POST audio to /voice?token=... or JSON to /chat?token=...")
 
     def do_OPTIONS(self):
@@ -158,6 +194,19 @@ class Handler(BaseHTTPRequestHandler):
         # separately (see set-path=/chat in bin/jarvis) so it never collides
         # with the stripped "/" used by the voice path.
         path = self.path.split("?")[0]
+
+        if path == "/register":
+            length = int(self.headers.get("Content-Length", 0))
+            if not length:
+                return self._send_json(400, {"error": "empty body"})
+            try:
+                info = json.loads(self.rfile.read(length))
+            except ValueError:
+                return self._send_json(400, {"error": "invalid JSON"})
+            name = register_device(info)
+            sys.stderr.write(f"[bridge] Device registered: {name}\n")
+            return self._send_json(200, {"ok": True, "name": name})
+
         if path == "/chat":
             return self._handle_chat()
         if path not in ("/", "/voice"):

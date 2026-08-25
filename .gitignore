@@ -5,6 +5,12 @@ hud/.claude/
 # Bridge secrets (token + phone session id) — generated automatically on first run
 bridge/config.json
 
+# Device registry (tailscale IPs + tokens of managed devices) — generated at runtime
+bridge/devices.json
+
+# Device agent token — generated automatically per device
+agents/config.json
+
 # Personal machine-specific symlink to voicemode's local event log
 hud/voicemode-logs
 
