@@ -77,6 +77,26 @@
   #send-btn:disabled{ opacity:0.5; cursor:default; }
   #send-btn svg{ width:20px; height:20px; }
 
+  #mic-btn{
+    flex-shrink:0; width:44px; height:44px; border-radius:50%; border:1px solid var(--border);
+    background: var(--panel-bg); color: var(--accent); cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+  }
+  #mic-btn svg{ width:20px; height:20px; }
+  #mic-btn.recording{
+    background: var(--bad); color: var(--bg); border-color: var(--bad);
+    animation: mic-pulse 1.2s ease-in-out infinite;
+  }
+  #mic-btn.checking{ opacity:0.6; cursor:default; }
+  @keyframes mic-pulse{
+    0%, 100%{ box-shadow: 0 0 0 0 rgba(255,77,94,0.35); }
+    50%{ box-shadow: 0 0 0 8px rgba(255,77,94,0); }
+  }
+  .voice-hint{
+    font-family: var(--mono); font-size:11px; color: var(--text-dim); text-align:center;
+    min-height:1.2em; flex-shrink:0;
+  }
+
   .gate{
     position:fixed; inset:0; z-index:5;
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px;
@@ -120,6 +140,12 @@
   <div class="brand">JARVIS<span>· CHAT</span></div>
   <div class="messages" id="messages"></div>
   <div class="composer">
+    <button id="mic-btn" type="button" aria-label="Hablar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2a5 5 0 0 0-5 5v3a5 5 0 0 0 10 0V7a5 5 0 0 0-5-5Z"/>
+        <path d="M7 10.5v.5a5 5 0 0 0 10 0v-.5M12 17v3M9 20h6"/>
+      </svg>
+    </button>
     <textarea id="input" rows="1" placeholder="Escribe algo..." autocomplete="off"></textarea>
     <button id="send-btn" type="button" aria-label="Enviar">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -127,17 +153,32 @@
       </svg>
     </button>
   </div>
+  <div class="voice-hint" id="voice-hint"></div>
 </div>
 
+<audio id="player" playsinline></audio>
+
 <script>
+// Tu PC (bridge/server.py corriendo ahí vía bin/jarvis) expuesta por Tailscale.
+// Cambiá esto si tu hostname de Tailscale para la PC es otro.
+const PC_VOICE_HOST = 'https://perseo.tailfe7913.ts.net';
+const PC_CHECK_TIMEOUT_MS = 3000;
+
 const params = new URLSearchParams(location.search);
 let token = params.get('token');
 if (token) localStorage.setItem('jarvis_token', token);
 else token = localStorage.getItem('jarvis_token') || '';
 
+let voiceToken = params.get('voice_token');
+if (voiceToken) localStorage.setItem('jarvis_voice_token', voiceToken);
+else voiceToken = localStorage.getItem('jarvis_voice_token') || '';
+
 const messagesEl = document.getElementById('messages');
 const inputEl = document.getElementById('input');
 const sendBtn = document.getElementById('send-btn');
+const micBtn = document.getElementById('mic-btn');
+const voiceHintEl = document.getElementById('voice-hint');
+const player = document.getElementById('player');
 let busy = false;
 
 function addMessage(role, text) {
@@ -197,6 +238,100 @@ async function send() {
     busy = false;
     sendBtn.disabled = false;
     inputEl.focus();
+  }
+}
+
+/* ---------------- voice via the PC's bridge (only when the PC is on) ---------------- */
+
+async function isPcAvailable() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PC_CHECK_TIMEOUT_MS);
+  try {
+    const resp = await fetch(`${PC_VOICE_HOST}/voice`, { method: 'GET', signal: controller.signal });
+    return resp.ok;
+  } catch (err) {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+let mediaRecorder, chunks = [], recording = false, micBusy = false;
+
+async function ensureRecorder() {
+  if (mediaRecorder) return mediaRecorder;
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data); };
+  mediaRecorder.onstop = sendRecordedAudio;
+  return mediaRecorder;
+}
+
+micBtn.addEventListener('click', async () => {
+  if (micBusy) return;
+  if (!voiceToken) {
+    addMessage('jarvis error', 'Falta el token de voz: abrí el enlace con &voice_token=... (lo sacás de bridge/config.json en tu PC).');
+    return;
+  }
+
+  if (recording) {
+    mediaRecorder.stop();
+    recording = false;
+    micBusy = true;
+    micBtn.classList.remove('recording');
+    micBtn.classList.add('checking');
+    voiceHintEl.textContent = 'procesando...';
+    return;
+  }
+
+  micBtn.classList.add('checking');
+  voiceHintEl.textContent = 'revisando tu PC...';
+  const available = await isPcAvailable();
+  micBtn.classList.remove('checking');
+
+  if (!available) {
+    voiceHintEl.textContent = '';
+    addMessage('jarvis error', 'Los servicios de voz no están activos ahora mismo — prendé tu PC (bin/jarvis) e intentá de nuevo.');
+    return;
+  }
+
+  try {
+    await ensureRecorder();
+    chunks = [];
+    mediaRecorder.start();
+    recording = true;
+    micBtn.classList.add('recording');
+    voiceHintEl.textContent = 'escuchando... toca de nuevo para enviar';
+  } catch (err) {
+    voiceHintEl.textContent = '';
+    addMessage('jarvis error', 'No pude acceder al micrófono (' + err.name + '): ' + err.message);
+  }
+});
+
+async function sendRecordedAudio() {
+  const blob = new Blob(chunks, { type: mediaRecorder.mimeType || 'audio/webm' });
+  try {
+    const resp = await fetch(`${PC_VOICE_HOST}/voice?token=${encodeURIComponent(voiceToken)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': blob.type },
+      body: blob,
+    });
+    if (!resp.ok) {
+      addMessage('jarvis error', 'Error de voz: ' + await resp.text());
+      return;
+    }
+    const transcript = decodeURIComponent(resp.headers.get('X-Transcript') || '');
+    const reply = decodeURIComponent(resp.headers.get('X-Reply') || '');
+    if (transcript) addMessage('user', transcript);
+    if (reply) addMessage('jarvis', reply);
+    const audioBlob = await resp.blob();
+    player.src = URL.createObjectURL(audioBlob);
+    await player.play();
+  } catch (err) {
+    addMessage('jarvis error', 'Error de red (voz): ' + err.message);
+  } finally {
+    voiceHintEl.textContent = '';
+    micBusy = false;
   }
 }
 
