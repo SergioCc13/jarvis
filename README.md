@@ -46,7 +46,13 @@ See `CLAUDE.md` for the full layout and the "jarvis on" trigger behavior.
    ```
    https://<your-tailscale-node>.ts.net/hud/chat.html?token=<token from bridge/config.json>
    ```
+   `chat.html` also has a mic button for voice, which talks to *this* PC's bridge specifically (needed if `chat.html` itself is hosted elsewhere, e.g. an always-on Raspberry Pi doing text-only Jarvis). It needs a second URL param the first time: `&voice_token=<same token from bridge/config.json>`, and the PC's Tailscale hostname is a constant (`PC_VOICE_HOST`) near the top of `chat.html`'s `<script>` — update it if your PC's Tailscale node name changes. The mic button checks that this PC is actually reachable before recording, so it fails with a clear message instead of a network error when the PC is off.
+
    **Read the security notes in `CLAUDE.md` before doing this** — the bridge token grants whatever Bash permissions your project's `.claude/settings.local.json` already pre-approves.
+
+## Auto-start on PC boot (optional)
+
+So voice/chat via the PC are available whenever it's powered on, without remembering to run `bin/jarvis` by hand: `bin/jarvis` calls into `bin/jarvis-services` for the actual service-starting logic (whisper/kokoro/HUD/bridge/tailscale serve — no browser, no interactive Claude session), which is safe to run unattended. On Windows/WSL2, a `.bat` in the Windows Startup folder (`shell:startup`, i.e. `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`) running `wsl.exe -d <your-distro> -u <your-user> /path/to/jarvis-services` at every login covers this without needing admin rights (unlike Task Scheduler, which may need elevation depending on your machine's policy).
 
 ## Vault (optional)
 
