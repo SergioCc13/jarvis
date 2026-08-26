@@ -1107,7 +1107,15 @@ async function sendChat(text){
   _setChatState('idle');
 }
 
+function _noMic(){
+  // mediaDevices is undefined on HTTP (non-secure context). Point to HTTPS.
+  const httpsUrl = `https://${location.hostname.split('.')[0]}.${location.hostname.split('.').slice(1).join('.')}/hud/`.replace('//.','//')
+    || 'https://raspberrypi.tailfe7913.ts.net/hud/';
+  _addMsg('error', `Voz requiere HTTPS. Abre: https://raspberrypi.tailfe7913.ts.net/hud/`);
+}
+
 async function startVoice(){
+  if(!navigator.mediaDevices){ _noMic(); return; }
   if(_recording){ stopVoice(); return; }
   _recording = true;
   document.getElementById('voice-btn').classList.add('recording');
@@ -1162,6 +1170,7 @@ async function _sendVoice(){
 
 async function initClapDetect(){
   const statusEl = document.getElementById('clap-status');
+  if(!navigator.mediaDevices){ statusEl.title='Palmadas no disponibles (HTTP)'; return; }
   try{
     const stream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
     const ctx = new (window.AudioContext||window.webkitAudioContext)();
