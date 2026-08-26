@@ -1139,7 +1139,7 @@ async function startVoice(){
     const buf = new Uint8Array(analyser.frequencyBinCount);
     const btn = document.getElementById('voice-btn');
     const SPEECH_RMS = 12;     // threshold to consider as speech
-    const SILENCE_MS = 1500;   // ms of silence before auto-stop
+    const SILENCE_MS = 10000;  // ms of silence before auto-stop
     let speechSeen = false, silenceAt = null;
 
     function vad(){

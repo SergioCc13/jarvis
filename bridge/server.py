@@ -9,6 +9,7 @@ POST /register, and Jarvis (Claude) can list them with GET /devices.
 """
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -22,10 +23,57 @@ BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 JARVIS_DIR = os.environ.get("JARVIS_DIR", os.path.dirname(BRIDGE_DIR))
 CONFIG_PATH = os.path.join(BRIDGE_DIR, "config.json")
 DEVICES_PATH = os.path.join(BRIDGE_DIR, "devices.json")
-WHISPER_URL = os.environ.get("VOICEMODE_STT_URL", "http://127.0.0.1:2022/v1/audio/transcriptions")
-KOKORO_URL = os.environ.get("VOICEMODE_TTS_URL", "http://127.0.0.1:8880/v1/audio/speech")
 TTS_VOICE = os.environ.get("JARVIS_TTS_VOICE", "af_sky")
 PORT = 8792
+
+# Load bridge/.env so JARVIS_VOICE_BACKENDS and other vars are available
+def _load_env():
+    env_file = os.path.join(BRIDGE_DIR, ".env")
+    if not os.path.exists(env_file):
+        return
+    with open(env_file) as f:
+        for line in f:
+            line = line.strip()
+            if line and not line.startswith("#") and "=" in line:
+                k, v = line.split("=", 1)
+                os.environ.setdefault(k.strip(), v.strip())
+_load_env()
+
+# ── voice backend selection ───────────────────────────────────────────────────
+# JARVIS_VOICE_BACKENDS = comma-separated Tailscale IPs of devices running
+# Whisper (port 2022) and Kokoro/Piper (port 8880), in priority order.
+# Pi's own services (127.0.0.1) are always the last fallback.
+_BACKEND_IPS = [
+    ip.strip()
+    for ip in os.environ.get("JARVIS_VOICE_BACKENDS", "").split(",")
+    if ip.strip()
+] + ["127.0.0.1"]
+
+_backend_cache = {"ip": None, "ts": 0}
+_BACKEND_TTL = 60  # re-check every 60 s
+
+
+def _reachable(ip, port=2022, timeout=2):
+    try:
+        with socket.create_connection((ip, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _pick_backend():
+    """Return the first reachable IP (STT port 2022). Cached for 60 s."""
+    now = time.time()
+    if _backend_cache["ip"] and now - _backend_cache["ts"] < _BACKEND_TTL:
+        return _backend_cache["ip"]
+    for ip in _BACKEND_IPS:
+        if _reachable(ip):
+            if ip != _backend_cache["ip"]:
+                sys.stderr.write(f"[bridge] voice backend → {ip}\n")
+            _backend_cache.update({"ip": ip, "ts": now})
+            return ip
+    _backend_cache.update({"ip": "127.0.0.1", "ts": now})
+    return "127.0.0.1"
 
 
 def load_config():
@@ -126,6 +174,8 @@ def register_device(info):
 # ── audio / claude ───────────────────────────────────────────────────────────
 
 def transcribe(audio_bytes, content_type):
+    backend = _pick_backend()
+    stt_url = f"http://{backend}:2022/v1/audio/transcriptions"
     boundary = "----jarvisbridgeboundary"
     ext = "webm" if "webm" in content_type else "wav"
     body = (
@@ -136,7 +186,7 @@ def transcribe(audio_bytes, content_type):
         f"Content-Type: {content_type}\r\n\r\n"
     ).encode() + audio_bytes + f"\r\n--{boundary}--\r\n".encode()
     req = urllib.request.Request(
-        WHISPER_URL,
+        stt_url,
         data=body,
         headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
     )
@@ -163,11 +213,13 @@ def ask_claude(text):
 
 
 def synthesize(text):
+    backend = _pick_backend()
+    tts_url = f"http://{backend}:8880/v1/audio/speech"
     payload = json.dumps(
         {"model": "tts-1", "input": text, "voice": TTS_VOICE, "response_format": "mp3"}
     ).encode()
     req = urllib.request.Request(
-        KOKORO_URL, data=payload, headers={"Content-Type": "application/json"}
+        tts_url, data=payload, headers={"Content-Type": "application/json"}
     )
     with urllib.request.urlopen(req, timeout=30) as resp:
         return resp.read()
