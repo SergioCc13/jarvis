@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Jarvis scraper — precios de cartas, ofertas de trabajo, cualquier web.
+"""Jarvis scraper — precios de cartas, ofertas de trabajo, personas, cualquier web.
 
 Cartas:
   python3 agents/scraper.py magic "Ragavan"
@@ -9,14 +9,20 @@ Cartas:
 Trabajo:
   python3 agents/scraper.py jobs "desarrollador python"
   python3 agents/scraper.py jobs "diseñador UX" --lugar "Barcelona"
-  python3 agents/scraper.py jobs "data scientist" --lugar "remoto"
+
+Personas:
+  python3 agents/scraper.py persona "Elon Musk"
+  python3 agents/scraper.py github "torvalds"
+  python3 agents/scraper.py twitter "elonmusk"
 
 General:
+  python3 agents/scraper.py google "cualquier consulta"   # SerpAPI si hay key, si no DDG
   python3 agents/scraper.py url "https://cualquier-web.com"
-  python3 agents/scraper.py search "cualquier consulta"
+  python3 agents/scraper.py search "cualquier consulta"   # DuckDuckGo Instant Answer
 """
 import html.parser
 import json
+import os
 import re
 import ssl
 import sys
@@ -363,6 +369,277 @@ def jobs(query: str, lugar: str = "España") -> str:
     return "\n".join(lines)
 
 
+# ── GitHub ───────────────────────────────────────────────────────────
+
+def github(query: str) -> str:
+    """Search GitHub users by username or full name. Free API, no key needed."""
+    # First try exact username
+    try:
+        user = _fetch(f"https://api.github.com/users/{urllib.parse.quote(query)}")
+        return _fmt_github_user(user)
+    except RuntimeError:
+        pass
+
+    # Search by name/keyword
+    try:
+        data = _fetch(f"https://api.github.com/search/users?q={urllib.parse.quote(query)}&per_page=5")
+        items = data.get("items", [])
+        if not items:
+            return f"No se encontró '{query}' en GitHub"
+        lines = [f"👨‍💻 GitHub — '{query}':"]
+        for u in items[:5]:
+            profile = _fetch(u["url"])
+            lines.append(_fmt_github_user_short(profile))
+        return "\n".join(lines)
+    except RuntimeError as e:
+        return f"Error buscando en GitHub: {e}"
+
+
+def _fmt_github_user(u: dict) -> str:
+    lines = [f"👨‍💻 GitHub: {u.get('name') or u.get('login')} (@{u.get('login')})"]
+    if u.get("bio"):
+        lines.append(f"  Bio: {u['bio']}")
+    if u.get("company"):
+        lines.append(f"  Empresa: {u['company']}")
+    if u.get("location"):
+        lines.append(f"  Ubicación: {u['location']}")
+    if u.get("blog"):
+        lines.append(f"  Web: {u['blog']}")
+    if u.get("email"):
+        lines.append(f"  Email: {u['email']}")
+    lines.append(
+        f"  📊 {u.get('public_repos',0)} repos · "
+        f"{u.get('followers',0)} seguidores · "
+        f"sigue a {u.get('following',0)}"
+    )
+    lines.append(f"  🔗 {u.get('html_url')}")
+    return "\n".join(lines)
+
+
+def _fmt_github_user_short(u: dict) -> str:
+    bio = f" — {u['bio'][:60]}" if u.get("bio") else ""
+    loc = f" ({u['location']})" if u.get("location") else ""
+    return (
+        f"  • @{u.get('login')}{loc}{bio}\n"
+        f"    {u.get('public_repos',0)} repos · {u.get('followers',0)} seguidores"
+        f" · 🔗 {u.get('html_url')}"
+    )
+
+
+# ── Twitter / X via Nitter ────────────────────────────────────────────
+
+NITTER_INSTANCES = [
+    "https://nitter.net",
+    "https://nitter.privacydev.net",
+    "https://nitter.poast.org",
+]
+
+def twitter(username: str) -> str:
+    """Fetch a Twitter/X profile via public Nitter mirrors (no login needed)."""
+    username = username.lstrip("@")
+    tried = []
+    for base in NITTER_INSTANCES:
+        url = f"{base}/{urllib.parse.quote(username)}"
+        try:
+            html_raw = _fetch(url, timeout=8, as_json=False)
+            if "user not found" in html_raw.lower() or "instance is temporarily" in html_raw.lower():
+                continue
+            return _parse_nitter_profile(html_raw, username, url)
+        except RuntimeError as e:
+            tried.append(f"{base}: {e}")
+            continue
+
+    # Fallback: DDG search for their Twitter
+    ddg = ddg_search(f"twitter {username} perfil")
+    return (
+        f"🐦 @{username} — Nitter no disponible ({'; '.join(tried[:2])})\n\n"
+        f"Búsqueda alternativa:\n{ddg}\n\n"
+        f"🔗 Twitter/X directo: https://x.com/{urllib.parse.quote(username)}"
+    )
+
+
+def _parse_nitter_profile(html_raw: str, username: str, url: str) -> str:
+    def _get(pattern):
+        m = re.search(pattern, html_raw, re.S | re.I)
+        return re.sub(r'<[^>]+>', '', m.group(1)).strip() if m else None
+
+    name    = _get(r'<a[^>]+class="[^"]*fullname[^"]*"[^>]*>(.*?)</a>')
+    bio     = _get(r'<div[^>]+class="[^"]*profile-bio[^"]*"[^>]*>(.*?)</div>')
+    loc     = _get(r'<div[^>]+class="[^"]*profile-location[^"]*"[^>]*>(.*?)</div>')
+    website = _get(r'<div[^>]+class="[^"]*profile-website[^"]*"[^>]*>.*?href="([^"]+)"')
+    tweets  = _get(r'<li[^>]*>.*?Tweets.*?<span[^>]*>([\d,\.]+)</span>')
+    follows = _get(r'<li[^>]*>.*?Following.*?<span[^>]*>([\d,\.]+)</span>')
+    follrs  = _get(r'<li[^>]*>.*?Followers.*?<span[^>]*>([\d,\.]+)</span>')
+
+    lines = [f"🐦 Twitter: {name or username} (@{username})"]
+    if bio:
+        lines.append(f"  Bio: {bio[:200]}")
+    if loc:
+        lines.append(f"  Ubicación: {loc}")
+    if website:
+        lines.append(f"  Web: {website}")
+    stats = " · ".join(filter(None, [
+        f"{tweets} tweets" if tweets else None,
+        f"{follrs} seguidores" if follrs else None,
+        f"sigue a {follows}" if follows else None,
+    ]))
+    if stats:
+        lines.append(f"  📊 {stats}")
+    lines.append(f"  🔗 {url}")
+    lines.append(f"  🔗 X directo: https://x.com/{urllib.parse.quote(username)}")
+    return "\n".join(lines)
+
+
+# ── Google via SerpAPI (optional) ────────────────────────────────────
+
+def google(query: str) -> str:
+    """Search Google via SerpAPI (free 100/month). Falls back to DuckDuckGo.
+    Set SERPAPI_KEY in agents/.env or environment to enable Google results."""
+    _load_agents_env()
+    api_key = os.environ.get("SERPAPI_KEY", "").strip()
+
+    if api_key:
+        url = (
+            f"https://serpapi.com/search.json?"
+            f"q={urllib.parse.quote(query)}&hl=es&gl=es"
+            f"&api_key={urllib.parse.quote(api_key)}"
+        )
+        try:
+            data = _fetch(url)
+            return _fmt_serpapi(data, query)
+        except RuntimeError as e:
+            return f"SerpAPI error: {e}\n\n" + ddg_search(query)
+
+    # No key: DuckDuckGo
+    return f"(Sin SERPAPI_KEY — usando DuckDuckGo)\n\n" + ddg_search(query)
+
+
+def _fmt_serpapi(data: dict, query: str) -> str:
+    lines = [f"🔍 Google — '{query}':"]
+
+    # Answer box
+    if data.get("answer_box"):
+        ab = data["answer_box"]
+        snippet = ab.get("snippet") or ab.get("answer") or ab.get("result", "")
+        if snippet:
+            lines.append(f"\n📌 Respuesta directa:\n  {snippet[:400]}")
+
+    # Knowledge graph (person/entity)
+    if data.get("knowledge_graph"):
+        kg = data["knowledge_graph"]
+        if kg.get("title"):
+            lines.append(f"\n🧠 {kg['title']}")
+        if kg.get("description"):
+            lines.append(f"  {kg['description'][:300]}")
+        for k, v in list(kg.items())[:8]:
+            if k not in ("title", "description", "header_images", "images", "type",
+                         "entity_type", "knowledge_graph_search_link", "serpapi_knowledge_graph_search_link"):
+                if isinstance(v, str) and len(v) < 200:
+                    lines.append(f"  {k}: {v}")
+
+    # Organic results
+    results = data.get("organic_results", [])[:5]
+    if results:
+        lines.append("\n🌐 Resultados:")
+        for r in results:
+            lines.append(f"  • {r.get('title','?')}")
+            if r.get("snippet"):
+                lines.append(f"    {r['snippet'][:150]}")
+            if r.get("link"):
+                lines.append(f"    🔗 {r['link']}")
+
+    return "\n".join(lines)
+
+
+def _load_agents_env():
+    env_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
+    if os.path.exists(env_file):
+        with open(env_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    k, v = line.split("=", 1)
+                    os.environ.setdefault(k.strip(), v.strip())
+
+
+# ── Person search (multi-source) ──────────────────────────────────────
+
+def persona(name: str) -> str:
+    """Aggregate public info about a person from multiple sources."""
+    lines = [f"🔎 Búsqueda de persona: '{name}'"]
+    q = urllib.parse.quote(name)
+
+    # ── DuckDuckGo instant answer ─────────────────────────────────────
+    ddg = ddg_search(name)
+    if ddg and "Sin resultados" not in ddg:
+        lines.append(f"\n📖 Resumen público:\n{ddg}")
+
+    # ── GitHub ────────────────────────────────────────────────────────
+    try:
+        data = _fetch(f"https://api.github.com/search/users?q={q}&per_page=3")
+        items = data.get("items", [])
+        if items:
+            lines.append("\n👨‍💻 GitHub:")
+            for u in items[:2]:
+                try:
+                    profile = _fetch(u["url"])
+                    lines.append(_fmt_github_user_short(profile))
+                except RuntimeError:
+                    lines.append(f"  • @{u['login']} — 🔗 {u['html_url']}")
+    except RuntimeError:
+        pass
+
+    # ── LinkedIn (via DDG site: search) ──────────────────────────────
+    try:
+        li_data = _fetch(
+            f"https://api.duckduckgo.com/?q={urllib.parse.quote(name+' site:linkedin.com/in')}"
+            f"&format=json&no_html=1&skip_disambig=1"
+        )
+        li_topics = [
+            t for t in li_data.get("RelatedTopics", [])
+            if isinstance(t, dict) and "linkedin.com/in" in t.get("FirstURL", "")
+        ]
+        if li_topics:
+            lines.append("\n💼 LinkedIn:")
+            for t in li_topics[:3]:
+                txt = t.get("Text", "")[:120]
+                url = t.get("FirstURL", "")
+                lines.append(f"  • {txt}")
+                if url:
+                    lines.append(f"    🔗 {url}")
+    except RuntimeError:
+        pass
+
+    # ── Twitter/X (via DDG site: search) ─────────────────────────────
+    try:
+        tw_data = _fetch(
+            f"https://api.duckduckgo.com/?q={urllib.parse.quote(name+' site:x.com OR site:twitter.com')}"
+            f"&format=json&no_html=1&skip_disambig=1"
+        )
+        tw_topics = [
+            t for t in tw_data.get("RelatedTopics", [])
+            if isinstance(t, dict) and (
+                "x.com/" in t.get("FirstURL", "") or "twitter.com/" in t.get("FirstURL", "")
+            )
+        ]
+        if tw_topics:
+            lines.append("\n🐦 Twitter/X:")
+            for t in tw_topics[:2]:
+                url = t.get("FirstURL", "")
+                lines.append(f"  🔗 {url}")
+    except RuntimeError:
+        pass
+
+    # ── Direct search links ───────────────────────────────────────────
+    lines.append(f"\n🔗 Links directos:")
+    lines.append(f"  Google: https://www.google.com/search?q={q}")
+    lines.append(f"  LinkedIn: https://www.linkedin.com/search/results/people/?keywords={q}")
+    lines.append(f"  Twitter/X: https://x.com/search?q={q}&f=user")
+    lines.append(f"  GitHub: https://github.com/search?q={q}&type=users")
+
+    return "\n".join(lines)
+
+
 # ── CLI ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -395,9 +672,17 @@ if __name__ == "__main__":
             print(ddg_search(arg))
         elif cmd == "jobs":
             print(jobs(arg, lugar=lugar))
+        elif cmd == "persona":
+            print(persona(arg))
+        elif cmd == "github":
+            print(github(arg))
+        elif cmd == "twitter":
+            print(twitter(arg))
+        elif cmd == "google":
+            print(google(arg))
         else:
             print(f"Comando desconocido: {cmd}")
-            print("Usa: magic | pokemon | yugioh | url | search | jobs")
+            print("Usa: magic | pokemon | yugioh | url | search | jobs | persona | github | twitter | google")
             sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")

@@ -124,22 +124,33 @@ No todos los agentes son necesarios en cada tarea — usa solo los que la tarea 
 | Pokémon | pokemontcg.io (fallback DDG) | TCGPlayer USD |
 
 ```bash
+# Cartas
 python3 agents/scraper.py magic "Ragavan Nimble Pilferer"
 python3 agents/scraper.py pokemon "Charizard"
 python3 agents/scraper.py yugioh "Dark Magician"
-python3 agents/scraper.py url "https://cualquier-web.com"         # texto limpio
-python3 agents/scraper.py search "precio Black Lotus"             # DuckDuckGo
-python3 agents/scraper.py jobs "desarrollador python"             # ofertas de trabajo (España)
-python3 agents/scraper.py jobs "diseñador UX" --lugar "Barcelona" # con ubicación
-python3 agents/scraper.py jobs "data scientist" --lugar "remoto"
+
+# Personas
+python3 agents/scraper.py persona "Elon Musk"              # búsqueda multi-fuente
+python3 agents/scraper.py github "torvalds"                # perfil GitHub (API oficial, sin key)
+python3 agents/scraper.py twitter "elonmusk"               # perfil Twitter/X vía Nitter
+
+# Búsqueda
+python3 agents/scraper.py google "consulta"                # Google vía SerpAPI (si hay key) o DDG
+python3 agents/scraper.py search "consulta"                # DuckDuckGo Instant Answer
+python3 agents/scraper.py url "https://cualquier-web.com"  # texto limpio de cualquier web
+
+# Trabajo
+python3 agents/scraper.py jobs "desarrollador python"
+python3 agents/scraper.py jobs "diseñador UX" --lugar "Barcelona"
 ```
 
-El comando `jobs` combina:
-- **Presencial/híbrido**: Indeed España + Infojobs (scraping — puede estar bloqueado, da enlaces directos)
-- **Remoto**: Remotive API (gratuita, sin API key, empleos tech remotos)
-- **Links directos**: Indeed, Infojobs, LinkedIn con la búsqueda pre-rellena
+- `persona`: combina DDG + GitHub API + LinkedIn/Twitter vía DDG site-search + links directos
+- `github`: API oficial de GitHub, gratuita, sin key — devuelve bio, empresa, repos, seguidores
+- `twitter`: intenta leer perfil vía mirrors Nitter (sin login), fallback a links directos
+- `google`: usa SerpAPI si `SERPAPI_KEY` está en `agents/.env` (100 búsquedas/mes gratis), si no DDG
+- `jobs`: Indeed/Infojobs (scraping) + Remotive API (remoto, gratis) + links directos
 
-Usa este scraper siempre que el usuario pregunte por precios de cartas, pida info de una web, o busque trabajo.
+Usa este scraper siempre que el usuario pregunte por precios de cartas, pida info de una persona, de una web, o busque trabajo.
 
 ## Cardmarket (MKM API)
 
