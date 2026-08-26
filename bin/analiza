@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+# Jarvis market analysis — collect data, synthesize with Claude, send via Telegram + email.
+#
+# Usage:
+#   bin/analiza                     # uses agents/watchlist.txt
+#   bin/analiza AAPL BTC SPY        # specific assets
+#   bin/analiza --watchlist         # explicit watchlist mode
+#
+# Cron (Pi):
+#   5 8 * * * cd /home/pi/jarvis && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
+
+set -euo pipefail
+JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+# Load env
+[ -f "$JARVIS_DIR/bridge/.env" ] && set -a && source "$JARVIS_DIR/bridge/.env" && set +a
+
+# Determine assets
+if [ $# -eq 0 ] || [ "${1:-}" = "--watchlist" ]; then
+    WL="$JARVIS_DIR/agents/watchlist.txt"
+    if [ ! -f "$WL" ]; then
+        echo "No watchlist at $WL — create it or pass assets as args" >&2
+        exit 1
+    fi
+    ASSETS=$(grep -v '^#' "$WL" | grep -v '^$' | tr '\n' ' ')
+else
+    ASSETS="$*"
+fi
+
+TODAY=$(date +%Y-%m-%d)
+echo "[analiza] $TODAY — activos: $ASSETS"
+
+# Collect market data
+DATA=$(python3 "$JARVIS_DIR/agents/trading.py" $ASSETS 2>&1) || true
+if [ -z "$DATA" ]; then
+    echo "[analiza] No data received" >&2
+    exit 1
+fi
+
+echo "--- Datos brutos ---"
+echo "$DATA"
+echo "---"
+
+# Synthesize with Claude
+PROMPT="Datos de mercado $TODAY:
+
+$DATA
+
+Genera un resumen ejecutivo en español de máximo 180 palabras con bullet points concisos. Destaca los cambios más relevantes, tendencias y si algún activo requiere atención especial. Sé directo y útil."
+
+SUMMARY=$(echo "$PROMPT" | claude -p --output-format text 2>/dev/null) || SUMMARY="$DATA"
+
+echo "--- Resumen ---"
+echo "$SUMMARY"
+echo "---"
+
+# Save to vault (shown in HUD)
+mkdir -p "$JARVIS_DIR/vault/outputs"
+echo "# Mercado $TODAY
+
+$SUMMARY
+" > "$JARVIS_DIR/vault/outputs/mercado.md"
+
+# Send via Telegram + email
+python3 "$JARVIS_DIR/bridge/notify.py" --no-voice "$SUMMARY" || true
+python3 "$JARVIS_DIR/bridge/notify.py" \
+    --channels email \
+    --subject "Jarvis: Mercado $TODAY" \
+    "$SUMMARY" || true
+
+echo "[analiza] Listo."

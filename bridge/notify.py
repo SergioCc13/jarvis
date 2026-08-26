@@ -4,15 +4,17 @@
 Supported channels (configure via env vars):
   Discord webhook  → JARVIS_DISCORD_WEBHOOK
   Telegram bot     → JARVIS_TELEGRAM_TOKEN + JARVIS_TELEGRAM_CHAT_ID
+  Email (Gmail)    → JARVIS_EMAIL_FROM + JARVIS_EMAIL_PASSWORD
 
 Usage (from Python):
     from bridge.notify import dispatch
     dispatch("Buenos días, Sergio. Tu agenda de hoy...")
+    dispatch("Informe", channels=["email"], subject="Jarvis: Mercado")
 
 Usage (from CLI):
     python3 bridge/notify.py "Mensaje de prueba"
-    python3 bridge/notify.py --channels discord "Mensaje"
-    python3 bridge/notify.py --channels telegram "Mensaje"
+    python3 bridge/notify.py --channels discord,telegram "Mensaje"
+    python3 bridge/notify.py --channels email --subject "Asunto" "Mensaje"
     python3 bridge/notify.py --no-voice "Texto plano sin voz"
 """
 import json
@@ -116,16 +118,52 @@ def synthesize(text: str) -> bytes | None:
         return None
 
 
+# ── email ────────────────────────────────────────────────────────────
+
+def send_email(subject: str, body: str) -> tuple[bool, str]:
+    import smtplib
+    import ssl as ssl_lib
+    from email.mime.multipart import MIMEMultipart
+    from email.mime.text import MIMEText
+
+    from_addr = os.environ.get("JARVIS_EMAIL_FROM", "")
+    password  = os.environ.get("JARVIS_EMAIL_PASSWORD", "")
+    to_addr   = os.environ.get("JARVIS_EMAIL_TO", from_addr)
+    smtp_host = os.environ.get("JARVIS_EMAIL_SMTP", "smtp.gmail.com")
+    smtp_port = int(os.environ.get("JARVIS_EMAIL_PORT", "587"))
+
+    if not (from_addr and password):
+        return False, "JARVIS_EMAIL_FROM / JARVIS_EMAIL_PASSWORD not set"
+
+    msg = MIMEMultipart()
+    msg["Subject"] = subject
+    msg["From"]    = from_addr
+    msg["To"]      = to_addr
+    msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    ctx = ssl_lib.create_default_context()
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port) as s:
+            s.ehlo()
+            s.starttls(context=ctx)
+            s.login(from_addr, password)
+            s.sendmail(from_addr, to_addr, msg.as_string())
+        return True, f"→ {to_addr}"
+    except Exception as e:
+        return False, str(e)
+
+
 # ── dispatcher ───────────────────────────────────────────────────────
 
 def dispatch(
     message: str,
     channels: list[str] | None = None,
     voice_for_telegram: bool = True,
+    subject: str = "Jarvis",
 ) -> dict[str, tuple[bool, str]]:
     """Send message to all configured/requested channels.
 
-    channels: list of "discord", "telegram". None = all configured.
+    channels: list of "discord", "telegram", "email". None = all configured.
     Returns dict of {channel: (ok, detail)}.
     """
     results: dict[str, tuple[bool, str]] = {}
@@ -136,6 +174,8 @@ def dispatch(
             channels.append("discord")
         if TELEGRAM_TOKEN and TELEGRAM_CHAT_ID:
             channels.append("telegram")
+        if os.environ.get("JARVIS_EMAIL_FROM") and os.environ.get("JARVIS_EMAIL_PASSWORD"):
+            channels.append("email")
 
     for ch in channels:
         if ch == "discord":
@@ -149,6 +189,8 @@ def dispatch(
                     results["telegram"] = send_telegram(message)
             else:
                 results["telegram"] = send_telegram(message)
+        elif ch == "email":
+            results["email"] = send_email(subject, message)
         else:
             results[ch] = (False, f"unknown channel '{ch}'")
 
@@ -161,8 +203,9 @@ if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Send a Jarvis notification")
     parser.add_argument("message", nargs="?", help="Message to send")
-    parser.add_argument("--channels", "-c", help="Comma-separated: discord,telegram")
+    parser.add_argument("--channels", "-c", help="Comma-separated: discord,telegram,email")
     parser.add_argument("--no-voice", action="store_true", help="Text-only for Telegram")
+    parser.add_argument("--subject", "-s", default="Jarvis", help="Email subject line")
     args = parser.parse_args()
 
     msg = args.message or (sys.stdin.read().strip() if not sys.stdin.isatty() else None)
@@ -170,7 +213,7 @@ if __name__ == "__main__":
         parser.error("Provide a message as argument or via stdin")
 
     chs = [c.strip() for c in args.channels.split(",")] if args.channels else None
-    results = dispatch(msg, channels=chs, voice_for_telegram=not args.no_voice)
+    results = dispatch(msg, channels=chs, voice_for_telegram=not args.no_voice, subject=args.subject)
 
     for ch, (ok, detail) in results.items():
         status = "✓" if ok else "✗"

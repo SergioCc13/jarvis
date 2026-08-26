@@ -152,6 +152,42 @@ python3 agents/scraper.py jobs "diseñador UX" --lugar "Barcelona"
 
 Usa este scraper siempre que el usuario pregunte por precios de cartas, pida info de una persona, de una web, o busque trabajo.
 
+## Análisis de mercado
+
+`agents/trading.py` recoge datos de mercado en tiempo real (stdlib puro, sin pip). `bin/analiza` los sintetiza con Claude y los envía por **Telegram + email**.
+
+| Fuente | Cubre | Key necesaria |
+|---|---|---|
+| Yahoo Finance | Acciones, ETFs, índices (^IBEX, ^GSPC…), bonos | No |
+| CoinGecko | Cripto (BTC, ETH, SOL, XRP, ADA, DOGE…) | No |
+| agents/scraper.py | Cartas TCG (precio Cardmarket EUR) | No |
+
+```bash
+# Datos brutos
+python3 agents/trading.py AAPL BTC SPY ^IBEX
+python3 agents/trading.py --watchlist            # lee agents/watchlist.txt
+
+# Análisis completo → Telegram + email
+bin/analiza AAPL BTC                            # assets concretos
+bin/analiza                                     # watchlist completa
+```
+
+**Watchlist diaria** (`agents/watchlist.txt`): edita para añadir tus activos. Una línea por activo.
+
+**Email**: necesita `JARVIS_EMAIL_PASSWORD` en `bridge/.env` (Gmail App Password).  
+Cómo obtenerlo: myaccount.google.com → Seguridad → Verificación en 2 pasos → Contraseñas de app → crear "Jarvis".
+
+**Triggers de voz/Telegram** que debes reconocer:
+- *"analiza AAPL"*, *"cómo va BTC hoy"*, *"resumen del mercado"* → `bin/analiza SYMBOL`
+- *"agentes: analiza mi cartera"* → modo multi-agente con `bin/analiza --watchlist`
+
+**Cron (Pi)** — añadido por `bin/install-pi`:
+```
+5 8 * * * cd /home/pi/jarvis && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
+```
+
+El resumen se guarda también en `vault/outputs/mercado.md` (visible en el HUD).
+
 ## Cardmarket (MKM API)
 
 Wrapper en `agents/cardmarket.py`. Credenciales en `agents/.env` (ver `agents/cardmarket.env.example`).
