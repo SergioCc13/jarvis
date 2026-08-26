@@ -141,16 +141,25 @@ def send_email(subject: str, body: str) -> tuple[bool, str]:
     msg["To"]      = to_addr
     msg.attach(MIMEText(body, "plain", "utf-8"))
 
-    ctx = ssl_lib.create_default_context()
-    try:
-        with smtplib.SMTP(smtp_host, smtp_port) as s:
-            s.ehlo()
-            s.starttls(context=ctx)
-            s.login(from_addr, password)
-            s.sendmail(from_addr, to_addr, msg.as_string())
-        return True, f"→ {to_addr}"
-    except Exception as e:
-        return False, str(e)
+    last_err = None
+    for verified in (True, False):
+        ctx = ssl_lib.create_default_context()
+        if not verified:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl_lib.CERT_NONE
+        try:
+            with smtplib.SMTP(smtp_host, smtp_port) as s:
+                s.ehlo()
+                s.starttls(context=ctx)
+                s.login(from_addr, password)
+                s.sendmail(from_addr, to_addr, msg.as_string())
+            return True, f"→ {to_addr}"
+        except ssl_lib.SSLError as e:
+            last_err = e
+            continue
+        except Exception as e:
+            return False, str(e)
+    return False, str(last_err)
 
 
 # ── dispatcher ───────────────────────────────────────────────────────
