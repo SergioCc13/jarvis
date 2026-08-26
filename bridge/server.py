@@ -53,6 +53,15 @@ def save_config(cfg):
 
 CONFIG = load_config()
 
+# Write token to HUD so the dashboard can connect without manual token entry
+def _write_hud_config():
+    hud_dir = os.path.join(JARVIS_DIR, "hud")
+    os.makedirs(hud_dir, exist_ok=True)
+    with open(os.path.join(hud_dir, "jarvis-config.js"), "w") as f:
+        f.write(f'window.__JARVIS_TOKEN = "{CONFIG["token"]}";\n')
+
+_write_hud_config()
+
 
 # ── device registry ──────────────────────────────────────────────────────────
 
@@ -299,7 +308,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    print(f"Voice bridge listening on 127.0.0.1:{PORT}")
+    print(f"Voice bridge listening on 0.0.0.0:{PORT}")
     print(f"Token: {CONFIG['token']}")
     print(f"Phone session id: {CONFIG['session_id']}")
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
