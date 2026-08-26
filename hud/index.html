@@ -1057,7 +1057,11 @@ function initLinks(){
 
 /* ── chat + voice + clap ────────────────────────────────────────────── */
 
-const BRIDGE_URL = `${location.protocol}//${location.hostname}:8792`;
+// On HTTPS (Tailscale), use same-origin paths routed by tailscale serve.
+// On HTTP (direct LAN/IP access), talk to bridge port 8792 directly.
+const BRIDGE_URL = (location.protocol === 'https:' && !location.port)
+  ? location.origin
+  : `${location.protocol}//${location.hostname}:8792`;
 const _token = () => window.__JARVIS_TOKEN || localStorage.getItem('jarvis_token') || '';
 
 let _recording = false;
