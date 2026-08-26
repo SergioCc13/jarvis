@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Install Whisper STT + Piper TTS on Raspberry Pi 4 (ARM64 / aarch64).
+# Run once: bash bin/setup-voice-pi
+set -e
+
+JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+VOICE_DIR="$JARVIS_DIR/agents/voice"
+PIPER_DIR="$JARVIS_DIR/bin"
+
+echo "=== Jarvis voice setup for Raspberry Pi ==="
+echo "JARVIS_DIR: $JARVIS_DIR"
+
+# ── system packages ────────────────────────────────────────────────────────
+echo "[1/5] Installing system packages (ffmpeg + pip)…"
+sudo apt-get update -qq
+sudo apt-get install -y --no-install-recommends ffmpeg python3-pip
+
+# ── faster-whisper ─────────────────────────────────────────────────────────
+echo "[2/5] Installing faster-whisper…"
+pip3 install --break-system-packages -q faster-whisper 2>/dev/null \
+  || pip3 install -q faster-whisper
+
+# ── piper binary ──────────────────────────────────────────────────────────
+PIPER_BIN="$PIPER_DIR/piper"
+if [ ! -f "$PIPER_BIN" ]; then
+  echo "[3/5] Downloading piper binary (ARM64)…"
+  TMP=$(mktemp -d)
+  PIPER_URL="https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_linux_aarch64.tar.gz"
+  curl -L --progress-bar "$PIPER_URL" -o "$TMP/piper.tar.gz"
+  tar -xzf "$TMP/piper.tar.gz" -C "$TMP"
+  cp "$TMP/piper/piper" "$PIPER_BIN"
+  chmod +x "$PIPER_BIN"
+  # copy shared libs if any (piper bundles espeak-ng-data)
+  if [ -d "$TMP/piper/espeak-ng-data" ]; then
+    cp -r "$TMP/piper/espeak-ng-data" "$PIPER_DIR/"
+  fi
+  rm -rf "$TMP"
+  echo "    piper installed at $PIPER_BIN"
+else
+  echo "[3/5] piper already installed, skipping."
+fi
+
+# ── piper voice model ──────────────────────────────────────────────────────
+mkdir -p "$VOICE_DIR"
+ONNX="$VOICE_DIR/es_ES-davefx-medium.onnx"
+CFG="$VOICE_DIR/es_ES-davefx-medium.onnx.json"
+
+if [ ! -f "$ONNX" ]; then
+  echo "[4/5] Downloading Spanish voice model (es_ES-davefx-medium)…"
+  HF_BASE="https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/es/es_ES/davefx/medium"
+  curl -L --progress-bar "$HF_BASE/es_ES-davefx-medium.onnx"      -o "$ONNX"
+  curl -L --progress-bar "$HF_BASE/es_ES-davefx-medium.onnx.json" -o "$CFG"
+  echo "    voice model saved to $VOICE_DIR/"
+else
+  echo "[4/5] Voice model already present, skipping."
+fi
+
+# ── systemd services ───────────────────────────────────────────────────────
+echo "[5/5] Installing systemd services…"
+
+USER_HOME="$(eval echo ~$USER)"
+UNIT_DIR="$USER_HOME/.config/systemd/user"
+mkdir -p "$UNIT_DIR"
+
+cat > "$UNIT_DIR/jarvis-stt.service" << EOF
+[Unit]
+Description=Jarvis STT server (Whisper)
+After=network.target
+
+[Service]
+WorkingDirectory=$JARVIS_DIR
+Environment=VOICEMODE_WHISPER_LANGUAGE=es
+Environment=WHISPER_MODEL=tiny
+ExecStart=$(which python3) $JARVIS_DIR/agents/stt_server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+cat > "$UNIT_DIR/jarvis-tts.service" << EOF
+[Unit]
+Description=Jarvis TTS server (Piper)
+After=network.target
+
+[Service]
+WorkingDirectory=$JARVIS_DIR
+Environment=PIPER_BIN=$PIPER_BIN
+Environment=PIPER_VOICE=$ONNX
+ExecStart=$(which python3) $JARVIS_DIR/agents/tts_server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now jarvis-stt jarvis-tts
+
+echo ""
+echo "=== Done! ==="
+echo "STT: http://127.0.0.1:2022/v1/audio/transcriptions"
+echo "TTS: http://127.0.0.1:8880/v1/audio/speech"
+echo ""
+echo "Status:"
+systemctl --user status jarvis-stt --no-pager -l | tail -5
+systemctl --user status jarvis-tts --no-pager -l | tail -5

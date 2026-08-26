@@ -1,0 +1,14 @@
+[Unit]
+Description=Jarvis TTS server (Piper)
+After=network.target
+
+[Service]
+WorkingDirectory=/home/pi/jarvis
+Environment=PIPER_BIN=/home/pi/jarvis/bin/piper
+Environment=PIPER_VOICE=/home/pi/jarvis/agents/voice/es_ES-davefx-medium.onnx
+ExecStart=/usr/bin/python3 /home/pi/jarvis/agents/tts_server.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
