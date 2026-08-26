@@ -14,6 +14,8 @@ MODEL_SIZE = os.environ.get("WHISPER_MODEL", "tiny")
 LANGUAGE = os.environ.get("VOICEMODE_WHISPER_LANGUAGE", "es")
 PORT = int(os.environ.get("WHISPER_PORT", "2022"))
 
+MODEL = None  # loaded after server binds to avoid "address in use" on restart
+
 
 def load_model():
     from faster_whisper import WhisperModel
@@ -23,11 +25,7 @@ def load_model():
     return m
 
 
-MODEL = load_model()
-
-
-def _parse_multipart(body: bytes, boundary: bytes) -> dict[str, bytes]:
-    """Return dict of field name -> content bytes from a multipart body."""
+def _parse_multipart(body: bytes, boundary: bytes) -> dict:
     parts = {}
     for chunk in body.split(b"--" + boundary):
         if b"\r\n\r\n" not in chunk:
@@ -50,6 +48,12 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             return
 
+        if MODEL is None:
+            self.send_response(503)
+            self.end_headers()
+            self.wfile.write(b'{"error":"model loading"}')
+            return
+
         ct = self.headers.get("Content-Type", "")
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
@@ -67,7 +71,6 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b'{"error":"no audio"}')
             return
 
-        # Detect format from content or filename hint
         ext = ".webm"
         if audio_data[:4] == b"RIFF":
             ext = ".wav"
@@ -94,6 +97,14 @@ class Handler(BaseHTTPRequestHandler):
         sys.stderr.write("[stt] " + (fmt % args) + "\n")
 
 
+class _Server(HTTPServer):
+    allow_reuse_address = True
+    allow_reuse_port = True
+
+
 if __name__ == "__main__":
-    print(f"STT server on 127.0.0.1:{PORT}  model={MODEL_SIZE}  lang={LANGUAGE}")
-    HTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    server = _Server(("127.0.0.1", PORT), Handler)
+    sys.stderr.write(f"[stt] bound to 127.0.0.1:{PORT}\n")
+    MODEL = load_model()
+    print(f"STT server ready on 127.0.0.1:{PORT}  model={MODEL_SIZE}  lang={LANGUAGE}")
+    server.serve_forever()
