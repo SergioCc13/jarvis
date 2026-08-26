@@ -113,6 +113,26 @@ No todos los agentes son necesarios en cada tarea — usa solo los que la tarea 
 3. Ejecutor aplica cambios si el usuario lo pidió (`set-price`)
 4. Resumen → Telegram
 
+## Scraper de precios y webs
+
+`agents/scraper.py` obtiene precios de cartas y texto de cualquier URL. Stdlib puro, sin API keys.
+
+| Juego | Fuente | Incluye precio Cardmarket EUR |
+|---|---|---|
+| Magic | Scryfall API (oficial) | ✅ sí |
+| YuGiOh | ygoprodeck.com API | TCGPlayer USD |
+| Pokémon | pokemontcg.io (fallback DDG) | TCGPlayer USD |
+
+```bash
+python3 agents/scraper.py magic "Ragavan Nimble Pilferer"
+python3 agents/scraper.py pokemon "Charizard"
+python3 agents/scraper.py yugioh "Dark Magician"
+python3 agents/scraper.py url "https://cualquier-web.com"   # texto limpio
+python3 agents/scraper.py search "precio Black Lotus"       # DuckDuckGo
+```
+
+Usa este scraper siempre que el usuario pregunte por precios de cartas o pida info de una web.
+
 ## Cardmarket (MKM API)
 
 Wrapper en `agents/cardmarket.py`. Credenciales en `agents/.env` (ver `agents/cardmarket.env.example`).
