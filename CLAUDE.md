@@ -127,11 +127,19 @@ No todos los agentes son necesarios en cada tarea — usa solo los que la tarea 
 python3 agents/scraper.py magic "Ragavan Nimble Pilferer"
 python3 agents/scraper.py pokemon "Charizard"
 python3 agents/scraper.py yugioh "Dark Magician"
-python3 agents/scraper.py url "https://cualquier-web.com"   # texto limpio
-python3 agents/scraper.py search "precio Black Lotus"       # DuckDuckGo
+python3 agents/scraper.py url "https://cualquier-web.com"         # texto limpio
+python3 agents/scraper.py search "precio Black Lotus"             # DuckDuckGo
+python3 agents/scraper.py jobs "desarrollador python"             # ofertas de trabajo (España)
+python3 agents/scraper.py jobs "diseñador UX" --lugar "Barcelona" # con ubicación
+python3 agents/scraper.py jobs "data scientist" --lugar "remoto"
 ```
 
-Usa este scraper siempre que el usuario pregunte por precios de cartas o pida info de una web.
+El comando `jobs` combina:
+- **Presencial/híbrido**: Indeed España + Infojobs (scraping — puede estar bloqueado, da enlaces directos)
+- **Remoto**: Remotive API (gratuita, sin API key, empleos tech remotos)
+- **Links directos**: Indeed, Infojobs, LinkedIn con la búsqueda pre-rellena
+
+Usa este scraper siempre que el usuario pregunte por precios de cartas, pida info de una web, o busque trabajo.
 
 ## Cardmarket (MKM API)
 

@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
-"""Jarvis price scraper — fuentes gratuitas sin API key.
+"""Jarvis scraper — precios de cartas, ofertas de trabajo, cualquier web.
 
-Magic    → Scryfall API (precios reales de Cardmarket EUR incluidos)
-Pokémon  → pokemontcg.io API
-YuGiOh   → ygoprodeck.com API
-General  → DuckDuckGo + extracción de texto de cualquier URL
-
-Usage:
+Cartas:
   python3 agents/scraper.py magic "Ragavan"
   python3 agents/scraper.py pokemon "Charizard"
   python3 agents/scraper.py yugioh "Dark Magician"
+
+Trabajo:
+  python3 agents/scraper.py jobs "desarrollador python"
+  python3 agents/scraper.py jobs "diseñador UX" --lugar "Barcelona"
+  python3 agents/scraper.py jobs "data scientist" --lugar "remoto"
+
+General:
   python3 agents/scraper.py url "https://cualquier-web.com"
-  python3 agents/scraper.py search "precio ragavan cardmarket"  # DuckDuckGo
+  python3 agents/scraper.py search "cualquier consulta"
 """
 import html.parser
 import json
@@ -233,6 +235,134 @@ def ddg_search(query: str) -> str:
     return "\n".join(parts) if parts else f"Sin resultados para: {query}"
 
 
+# ── Job search ───────────────────────────────────────────────────────
+
+def _parse_indeed(html_text: str) -> list[dict]:
+    """Extract job listings from Indeed HTML."""
+    jobs = []
+    titles   = re.findall(r'data-testid="job-snippet"[^>]*>.*?<h2[^>]*><a[^>]*>(.*?)</a>', html_text, re.S)
+    companies = re.findall(r'data-testid="company-name"[^>]*>(.*?)</(?:span|div|a)>', html_text, re.S)
+    locations = re.findall(r'data-testid="text-location"[^>]*>(.*?)</div>', html_text, re.S)
+
+    # Fallback: generic pattern
+    if not titles:
+        titles   = re.findall(r'class="jobTitle[^"]*"[^>]*>.*?<span[^>]*>(.*?)</span>', html_text, re.S)
+        companies = re.findall(r'class="companyName"[^>]*>(.*?)</(?:span|a)>', html_text, re.S)
+        locations = re.findall(r'class="companyLocation"[^>]*>(.*?)</div>', html_text, re.S)
+
+    for i, title in enumerate(titles[:8]):
+        title = re.sub(r'<[^>]+>', '', title).strip()
+        company = re.sub(r'<[^>]+>', '', companies[i]).strip() if i < len(companies) else "?"
+        location = re.sub(r'<[^>]+>', '', locations[i]).strip() if i < len(locations) else "?"
+        if title:
+            jobs.append({"title": title, "company": company, "location": location, "source": "Indeed"})
+    return jobs
+
+
+def _parse_infojobs(html_text: str) -> list[dict]:
+    """Extract job listings from Infojobs HTML."""
+    # Infojobs has structured cards
+    jobs = []
+    blocks = re.findall(
+        r'<div[^>]+class="[^"]*ij-OfferCardContent[^"]*"[^>]*>(.*?)</div>\s*</div>',
+        html_text, re.S
+    )
+    if not blocks:
+        # Try h2 links (offer titles)
+        titles    = re.findall(r'<h2[^>]*>\s*<a[^>]*>(.*?)</a>', html_text, re.S)
+        companies = re.findall(r'<span[^>]*itemprop="name"[^>]*>(.*?)</span>', html_text, re.S)
+        locations = re.findall(r'<li[^>]*class="[^"]*location[^"]*"[^>]*>(.*?)</li>', html_text, re.S)
+        for i, title in enumerate(titles[:8]):
+            title = re.sub(r'<[^>]+>', '', title).strip()
+            company = re.sub(r'<[^>]+>', '', companies[i]).strip() if i < len(companies) else "?"
+            location = re.sub(r'<[^>]+>', '', locations[i]).strip() if i < len(locations) else "?"
+            if title and len(title) > 3:
+                jobs.append({"title": title, "company": company, "location": location, "source": "Infojobs"})
+    return jobs
+
+
+def _remotive_jobs(query: str, limit=6) -> list[dict]:
+    """Remotive.com — free API for remote tech jobs, no auth needed."""
+    url = f"https://remotive.com/api/remote-jobs?search={urllib.parse.quote(query)}&limit={limit}"
+    data = _fetch(url)
+    results = []
+    for j in (data.get("jobs") or [])[:limit]:
+        results.append({
+            "title":    j.get("title", "?"),
+            "company":  j.get("company_name", "?"),
+            "location": j.get("candidate_required_location") or "remoto",
+            "url":      j.get("url", ""),
+            "source":   "Remotive",
+        })
+    return results
+
+
+def jobs(query: str, lugar: str = "España") -> str:
+    """Search job listings: scrape Indeed/Infojobs + Remotive free API."""
+    results = []
+    indeed_url = (
+        f"https://es.indeed.com/jobs?"
+        f"q={urllib.parse.quote(query)}&l={urllib.parse.quote(lugar)}&lang=es"
+    )
+    ij_url = (
+        f"https://www.infojobs.net/jobsearch/search-results/list.xhtml?"
+        f"keyword={urllib.parse.quote(query)}"
+    )
+
+    # ── Indeed España ────────────────────────────────────────────────
+    try:
+        html = _fetch(indeed_url, as_json=False)
+        results.extend(_parse_indeed(html))
+    except RuntimeError:
+        pass
+
+    # ── Infojobs ─────────────────────────────────────────────────────
+    if len(results) < 4:
+        try:
+            html = _fetch(ij_url, as_json=False)
+            results.extend(_parse_infojobs(html))
+        except RuntimeError:
+            pass
+
+    # ── Remotive (free API, remote jobs) ─────────────────────────────
+    remote_results = []
+    try:
+        remote_results = _remotive_jobs(query)
+    except RuntimeError:
+        pass
+
+    # Build output
+    lines = [f"💼 Ofertas: '{query}'" + (f" en {lugar}" if lugar != "España" else "")]
+
+    seen = set()
+    if results:
+        lines.append(f"\n📍 Presencial / Híbrido ({len(results)} encontradas):")
+        for j in results:
+            key = j["title"].lower()[:30]
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(f"  • {j['title']} — {j['company']} ({j['location']}) [{j['source']}]")
+    else:
+        lines.append("\n📍 Presencial: scraping bloqueado — usa los enlaces directos abajo")
+
+    if remote_results:
+        lines.append(f"\n🌍 Remoto ({len(remote_results)} en Remotive):")
+        for j in remote_results:
+            key = j["title"].lower()[:30]
+            if key in seen:
+                continue
+            seen.add(key)
+            lines.append(f"  • {j['title']} — {j['company']} ({j['location']})")
+            if j.get("url"):
+                lines.append(f"    🔗 {j['url']}")
+
+    lines.append(f"\n🔗 Indeed: {indeed_url}")
+    lines.append(f"🔗 Infojobs: {ij_url}")
+    lines.append(f"🔗 LinkedIn: https://www.linkedin.com/jobs/search/?keywords={urllib.parse.quote(query)}&location={urllib.parse.quote(lugar)}")
+    return "\n".join(lines)
+
+
 # ── CLI ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
@@ -241,7 +371,16 @@ if __name__ == "__main__":
         sys.exit(1)
 
     cmd   = sys.argv[1].lower()
-    arg   = " ".join(sys.argv[2:])
+
+    # Parse --lugar for jobs command
+    lugar = "España"
+    rest_args = sys.argv[2:]
+    if "--lugar" in rest_args:
+        idx = rest_args.index("--lugar")
+        if idx + 1 < len(rest_args):
+            lugar = rest_args[idx + 1]
+            rest_args = rest_args[:idx] + rest_args[idx + 2:]
+    arg = " ".join(rest_args)
 
     try:
         if cmd == "magic":
@@ -254,9 +393,11 @@ if __name__ == "__main__":
             print(url_text(sys.argv[2]))
         elif cmd == "search":
             print(ddg_search(arg))
+        elif cmd == "jobs":
+            print(jobs(arg, lugar=lugar))
         else:
             print(f"Comando desconocido: {cmd}")
-            print("Usa: magic | pokemon | yugioh | url | search")
+            print("Usa: magic | pokemon | yugioh | url | search | jobs")
             sys.exit(1)
     except Exception as e:
         print(f"Error: {e}")
