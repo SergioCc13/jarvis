@@ -25,15 +25,22 @@ PIPER_BIN="$PIPER_DIR/piper"
 if [ ! -f "$PIPER_BIN" ]; then
   echo "[3/5] Downloading piper binary (ARM64)…"
   TMP=$(mktemp -d)
-  PIPER_URL="https://github.com/rhasspy/piper/releases/download/v1.2.0/piper_linux_aarch64.tar.gz"
+  PIPER_URL="https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_aarch64.tar.gz"
   curl -L --progress-bar "$PIPER_URL" -o "$TMP/piper.tar.gz"
   tar -xzf "$TMP/piper.tar.gz" -C "$TMP"
-  cp "$TMP/piper/piper" "$PIPER_BIN"
+  # Keep libs alongside the binary in piper-bin/, use a wrapper script as $PIPER_BIN
+  PIPER_LIBS_DIR="$PIPER_DIR/piper-bin"
+  mkdir -p "$PIPER_LIBS_DIR"
+  cp "$TMP/piper/." "$PIPER_LIBS_DIR/" 2>/dev/null || cp -r "$TMP/piper/." "$PIPER_LIBS_DIR/"
+  # Wrapper that sets LD_LIBRARY_PATH for the bundled libs
+  cat > "$PIPER_BIN" << 'WRAPPER'
+#!/usr/bin/env bash
+PIPER_DIR="$(cd "$(dirname "$0")/piper-bin" && pwd)"
+export LD_LIBRARY_PATH="$PIPER_DIR:$LD_LIBRARY_PATH"
+export ESPEAK_DATA_PATH="$PIPER_DIR/espeak-ng-data"
+exec "$PIPER_DIR/piper" "$@"
+WRAPPER
   chmod +x "$PIPER_BIN"
-  # copy shared libs if any (piper bundles espeak-ng-data)
-  if [ -d "$TMP/piper/espeak-ng-data" ]; then
-    cp -r "$TMP/piper/espeak-ng-data" "$PIPER_DIR/"
-  fi
   rm -rf "$TMP"
   echo "    piper installed at $PIPER_BIN"
 else
