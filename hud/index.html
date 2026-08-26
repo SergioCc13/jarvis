@@ -1114,6 +1114,8 @@ function _noMic(){
   _addMsg('error', `Voz requiere HTTPS. Abre: https://raspberrypi.tailfe7913.ts.net/hud/`);
 }
 
+let _vadCtx = null;  // AudioContext for VAD — closed on stop
+
 async function startVoice(){
   if(!navigator.mediaDevices){ _noMic(); return; }
   if(_recording){ stopVoice(); return; }
@@ -1125,9 +1127,41 @@ async function startVoice(){
     _mediaRecorder = new MediaRecorder(stream);
     _audioChunks = [];
     _mediaRecorder.ondataavailable = e => _audioChunks.push(e.data);
-    _mediaRecorder.onstop = _sendVoice;
+    _mediaRecorder.onstop = ()=>{ if(_vadCtx){ _vadCtx.close(); _vadCtx=null; } _sendVoice(); };
     _mediaRecorder.start();
-    setTimeout(()=>{ if(_recording) stopVoice(); }, 12000);
+
+    // VAD: auto-stop after 1.5 s of silence following detected speech
+    _vadCtx = new (window.AudioContext||window.webkitAudioContext)();
+    const src = _vadCtx.createMediaStreamSource(stream);
+    const analyser = _vadCtx.createAnalyser();
+    analyser.fftSize = 512;
+    src.connect(analyser);
+    const buf = new Uint8Array(analyser.frequencyBinCount);
+    const btn = document.getElementById('voice-btn');
+    const SPEECH_RMS = 12;     // threshold to consider as speech
+    const SILENCE_MS = 1500;   // ms of silence before auto-stop
+    let speechSeen = false, silenceAt = null;
+
+    function vad(){
+      if(!_recording) return;
+      analyser.getByteTimeDomainData(buf);
+      let s=0; for(let i=0;i<buf.length;i++){const v=buf[i]-128;s+=v*v;}
+      const rms = Math.sqrt(s/buf.length);
+      if(rms > SPEECH_RMS){
+        speechSeen = true; silenceAt = null;
+        btn.textContent = '🔴';  // visual: actively hearing
+      } else if(speechSeen){
+        if(!silenceAt) silenceAt = Date.now();
+        const pct = Math.min(1,(Date.now()-silenceAt)/SILENCE_MS);
+        btn.style.opacity = 1 - pct*0.6;  // fade as silence grows
+        if(Date.now()-silenceAt > SILENCE_MS){ stopVoice(); return; }
+      }
+      requestAnimationFrame(vad);
+    }
+    vad();
+
+    // Hard safety cap: 30 s
+    setTimeout(()=>{ if(_recording) stopVoice(); }, 30000);
   }catch(e){
     _addMsg('error', `Micrófono: ${e.message}`);
     _recording = false;
@@ -1139,7 +1173,9 @@ async function startVoice(){
 function stopVoice(){
   if(!_mediaRecorder || !_recording) return;
   _recording = false;
-  document.getElementById('voice-btn').classList.remove('recording');
+  const btn = document.getElementById('voice-btn');
+  btn.classList.remove('recording');
+  btn.textContent = '🎙'; btn.style.opacity = '';
   _mediaRecorder.stop();
   _mediaRecorder.stream.getTracks().forEach(t=>t.stop());
 }
