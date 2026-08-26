@@ -150,7 +150,7 @@ def ask_claude(text):
         args += ["--resume", CONFIG["session_id"]]
     else:
         args += ["--session-id", CONFIG["session_id"]]
-    result = subprocess.run(args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=180)
+    result = subprocess.run(args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=600)
     if result.returncode != 0:
         raise RuntimeError(f"claude exited {result.returncode}: {result.stderr[-2000:]}")
     data = json.loads(result.stdout)
