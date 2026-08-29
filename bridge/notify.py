@@ -32,6 +32,31 @@ KOKORO_URL       = os.environ.get("VOICEMODE_TTS_URL", "http://127.0.0.1:8880/v1
 TTS_VOICE        = os.environ.get("JARVIS_TTS_VOICE", "af_sky")
 
 
+def _urlopen(req, timeout=15):
+    """urlopen con reintento verificado→sin-verificar (redes con MITM/cert corporativo).
+
+    Igual que hacen send_email() y agents/trading.py._fetch().
+    """
+    import ssl
+    last = None
+    for verified in (True, False):
+        ctx = ssl.create_default_context()
+        if not verified:
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+        try:
+            return urllib.request.urlopen(req, timeout=timeout, context=ctx)
+        except urllib.error.HTTPError:
+            raise  # error de aplicación, no de TLS
+        except urllib.error.URLError as e:
+            reason = getattr(e, "reason", e)
+            if "CERTIFICATE_VERIFY_FAILED" in str(reason) or reason.__class__.__name__ == "SSLError":
+                last = e
+                continue
+            raise
+    raise last
+
+
 # ── discord ──────────────────────────────────────────────────────────
 
 def send_discord(message: str) -> tuple[bool, str]:
@@ -44,7 +69,7 @@ def send_discord(message: str) -> tuple[bool, str]:
         method="POST",
     )
     try:
-        urllib.request.urlopen(req, timeout=10)
+        _urlopen(req, timeout=10)
         return True, "ok"
     except urllib.error.HTTPError as e:
         return False, f"Discord HTTP {e.code}: {e.read().decode()[:200]}"
@@ -68,7 +93,7 @@ def send_telegram(message: str) -> tuple[bool, str]:
         method="POST",
     )
     try:
-        urllib.request.urlopen(req, timeout=10)
+        _urlopen(req, timeout=10)
         return True, "ok"
     except Exception as e:
         return False, str(e)
@@ -93,7 +118,7 @@ def send_telegram_voice(mp3_bytes: bytes, caption: str = "") -> tuple[bool, str]
         method="POST",
     )
     try:
-        urllib.request.urlopen(req, timeout=30)
+        _urlopen(req, timeout=30)
         return True, "ok"
     except Exception as e:
         return False, str(e)

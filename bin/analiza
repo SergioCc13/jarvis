@@ -1,47 +1,44 @@
 #!/usr/bin/env bash
-# Jarvis market analysis — collect data, synthesize with Claude, send via Telegram + email.
+# Jarvis market analysis — genera el email diario "Jarvis: Mercado".
 #
-# Usage:
-#   bin/analiza                     # uses agents/watchlist.txt
-#   bin/analiza AAPL BTC SPY        # specific assets
-#   bin/analiza --watchlist         # explicit watchlist mode
+# Por defecto usa el motor MULTI-AGENTE (agents/analistas.py, estilo TradingAgents):
+# por cada activo, cadena de roles analista→alcista/bajista→trader→gestor de riesgo,
+# y un bloque final por activo (Puntuación 0-100, Recomendación, Plazo, entrada,
+# salida, próximo evento, Justificación) + visión de cartera. Envía email + Telegram.
 #
-# Cron (Pi):
-#   5 8 * * * cd /home/pi/jarvis && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
+# Uso:
+#   bin/analiza                     # watchlist completa, multi-agente, email+Telegram
+#   bin/analiza --only BTC ETH      # solo esos activos (multi-agente)
+#   bin/analiza --limit 3           # solo los 3 primeros de la watchlist
+#   bin/analiza --rapido [SÍMBOLOS] # modo antiguo: 1 resumen de 180 palabras (barato)
+#
+# Cron (Pi) — el multi-agente tarda ~15-25 min con 21 activos:
+#   0 8 * * * cd /home/pi/jarvis && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
 
 set -euo pipefail
 JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-
-# Load env
 [ -f "$JARVIS_DIR/bridge/.env" ] && set -a && source "$JARVIS_DIR/bridge/.env" && set +a
+TODAY=$(date +%Y-%m-%d)
 
-# Determine assets
+# ── Modo multi-agente (por defecto) ──────────────────────────────────
+if [ "${1:-}" != "--rapido" ]; then
+    exec python3 "$JARVIS_DIR/agents/analistas.py" --notify "$@"
+fi
+
+# ── Modo rápido (--rapido): resumen ejecutivo de 180 palabras ────────
+shift
 if [ $# -eq 0 ] || [ "${1:-}" = "--watchlist" ]; then
     WL="$JARVIS_DIR/agents/watchlist.txt"
-    if [ ! -f "$WL" ]; then
-        echo "No watchlist at $WL — create it or pass assets as args" >&2
-        exit 1
-    fi
+    [ -f "$WL" ] || { echo "No watchlist at $WL" >&2; exit 1; }
     ASSETS=$(grep -v '^#' "$WL" | grep -v '^$' | tr '\n' ' ')
 else
     ASSETS="$*"
 fi
 
-TODAY=$(date +%Y-%m-%d)
-echo "[analiza] $TODAY — activos: $ASSETS"
-
-# Collect market data
+echo "[analiza] $TODAY (rápido) — activos: $ASSETS"
 DATA=$(python3 "$JARVIS_DIR/agents/trading.py" $ASSETS 2>&1) || true
-if [ -z "$DATA" ]; then
-    echo "[analiza] No data received" >&2
-    exit 1
-fi
+[ -n "$DATA" ] || { echo "[analiza] No data received" >&2; exit 1; }
 
-echo "--- Datos brutos ---"
-echo "$DATA"
-echo "---"
-
-# Synthesize with Claude
 PROMPT="Datos de mercado $TODAY:
 
 $DATA
@@ -50,22 +47,11 @@ Genera un resumen ejecutivo en español de máximo 180 palabras con bullet point
 
 SUMMARY=$(echo "$PROMPT" | claude -p --output-format text 2>/dev/null) || SUMMARY="$DATA"
 
-echo "--- Resumen ---"
-echo "$SUMMARY"
-echo "---"
-
-# Save to vault (shown in HUD)
 mkdir -p "$JARVIS_DIR/vault/outputs"
-echo "# Mercado $TODAY
+printf '# Mercado %s\n\n%s\n' "$TODAY" "$SUMMARY" > "$JARVIS_DIR/vault/outputs/mercado.md"
 
-$SUMMARY
-" > "$JARVIS_DIR/vault/outputs/mercado.md"
-
-# Send via Telegram + email
 python3 "$JARVIS_DIR/bridge/notify.py" --no-voice "$SUMMARY" || true
-python3 "$JARVIS_DIR/bridge/notify.py" \
-    --channels email \
-    --subject "Jarvis: Mercado $TODAY" \
-    "$SUMMARY" || true
+python3 "$JARVIS_DIR/bridge/notify.py" --channels email \
+    --subject "Jarvis: Mercado $TODAY" "$SUMMARY" || true
 
-echo "[analiza] Listo."
+echo "[analiza] Listo (rápido)."

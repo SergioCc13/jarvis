@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Jarvis — seguimiento diario de la watchlist.
+#
+# Calcula indicadores (RSI, medias 50/200, 52 semanas, volumen), guarda histórico
+# y SOLO llama al LLM para los tickers que disparan una señal. Días tranquilos: no
+# gasta tokens y no notifica.
+#
+# Uso:
+#   bin/seguimiento                 # barrido + veredicto LLM + Telegram (si hay señales)
+#   bin/seguimiento scan            # solo barrido, imprime la tabla
+#   bin/seguimiento scan --json     # + volcado JSON
+#   bin/seguimiento scan --notify --always   # notifica aunque no haya señales
+#   bin/seguimiento score           # ¿cómo se movieron los flags de hace 2 semanas?
+#
+# El digest del día queda en vault/outputs/seguimiento.md; bin/analiza (8:05) lo
+# adjunta a su email diario. Para email propio: bin/seguimiento scan --notify --email
+#
+# Cron (Pi), diario, justo antes de bin/analiza:
+#   0 8 * * * cd /home/pi/jarvis && bin/seguimiento >> /tmp/jarvis-seguimiento.log 2>&1
+
+set -euo pipefail
+JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+[ -f "$JARVIS_DIR/bridge/.env" ] && set -a && source "$JARVIS_DIR/bridge/.env" && set +a
+
+if [ $# -eq 0 ]; then
+    exec python3 "$JARVIS_DIR/agents/seguimiento.py" scan --notify
+else
+    exec python3 "$JARVIS_DIR/agents/seguimiento.py" "$@"
+fi

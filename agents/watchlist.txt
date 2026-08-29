@@ -1,14 +1,30 @@
 # Jarvis watchlist diaria — un activo por línea
 # Formato: SYMBOL
 # Cripto: BTC, ETH, SOL, XRP, ADA, DOGE...
-# Acciones: AAPL, TSLA, NVDA, MSFT...
-# Índices: ^IBEX, ^GSPC (S&P500), ^DJI, ^NDX (Nasdaq)
-# ETFs: SPY, QQQ, VTI...
+# Acciones: AAPL, TSLA, NVDA, MSFT... (sufijos de bolsa: .MC Madrid, .DE Xetra, .L Londres)
+# Índices: ^GSPC (S&P500), ^GDAXI (DAX), ^N225 (Nikkei), ^VIX, ^IBEX, ^NDX
+# Materias primas / FX: GC=F (oro), SI=F (plata), CL=F (crudo), DX-Y.NYB (índice dólar)
+# ETFs: SPY, QQQ, MCHI, EGLN.L...
 # TCG: nombre_carta tcg magic|pokemon|yugioh
 
-AAPL
-NVDA
+^GSPC
+^GDAXI
+^N225
+^VIX
+GC=F
+SI=F
+CL=F
+DX-Y.NYB
+MCHI
 BTC
 ETH
-SPY
-^IBEX
+NXT.MC
+AMP.MC
+BRK-B
+NKE
+EGLN.L
+BIDU
+RDDT
+TXN
+IZER.MC
+BAS.DE

@@ -95,8 +95,12 @@ CRON_BLOCK="$CRON_MARKER
 30 7 * * * cd $JARVIS_DIR && bin/vault-refresh >> /tmp/jarvis-vault.log 2>&1
 # Morning brief — 8:00 AM
 0 8 * * * cd $JARVIS_DIR && bin/morning-brief >> /tmp/jarvis-brief.log 2>&1
-# Market analysis — 8:05 AM (after brief)
-5 8 * * * cd $JARVIS_DIR && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
+# Market analysis — multi-agent, 7:00 AM (takes ~20-40 min, email ready before 8)
+0 7 * * * cd $JARVIS_DIR && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
+# Watchlist seguimiento — fast indicator+event heads-up (LLM only on signals), 8:00 AM daily
+0 8 * * * cd $JARVIS_DIR && bin/seguimiento >> /tmp/jarvis-seguimiento.log 2>&1
+# Watchlist seguimiento — weekly flag scoring, Fri 6 PM
+0 18 * * 5 cd $JARVIS_DIR && bin/seguimiento score >> /tmp/jarvis-seguimiento.log 2>&1
 # Proactive reminders — every 30 min
 */30 * * * * cd $JARVIS_DIR && python3 bin/check-reminders >> /tmp/jarvis-reminders.log 2>&1
 # Watchdog — every 5 min

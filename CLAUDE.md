@@ -154,39 +154,107 @@ Usa este scraper siempre que el usuario pregunte por precios de cartas, pida inf
 
 ## Análisis de mercado
 
-`agents/trading.py` recoge datos de mercado en tiempo real (stdlib puro, sin pip). `bin/analiza` los sintetiza con Claude y los envía por **Telegram + email**.
+`agents/trading.py` recoge datos de mercado en tiempo real (stdlib puro, sin pip).
+`bin/analiza` genera el email diario **"Jarvis: Mercado"** y lo envía por **email + Telegram**.
 
 | Fuente | Cubre | Key necesaria |
 |---|---|---|
-| Yahoo Finance | Acciones, ETFs, índices (^IBEX, ^GSPC…), bonos | No |
+| Yahoo Finance | Acciones (sufijos .MC/.DE/.L), ETFs, índices (^GSPC, ^GDAXI, ^VIX…), materias primas (GC=F, CL=F), FX (DX-Y.NYB) | No |
 | CoinGecko | Cripto (BTC, ETH, SOL, XRP, ADA, DOGE…) | No |
 | agents/scraper.py | Cartas TCG (precio Cardmarket EUR) | No |
 
-```bash
-# Datos brutos
-python3 agents/trading.py AAPL BTC SPY ^IBEX
-python3 agents/trading.py --watchlist            # lee agents/watchlist.txt
+### Motor multi-agente (por defecto)
 
-# Análisis completo → Telegram + email
-bin/analiza AAPL BTC                            # assets concretos
-bin/analiza                                     # watchlist completa
+`bin/analiza` sin flags ejecuta `agents/analistas.py`: por cada activo de
+`agents/watchlist.txt` corre una cadena de roles inspirada en
+[TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents),
+cada rol una llamada a `claude -p` que ve el trabajo del anterior:
+
+1. **Analista técnico/cuantitativo** — tendencia, momentum, volumen, 52 semanas (solo hechos)
+2. **Analista de contexto y eventos** — catalizadores, próximo evento
+3. **Investigador alcista** — mejor tesis de compra
+4. **Investigador bajista** — rebate y construye el caso bajista
+5. **Trader** — sopesa el debate, decisión preliminar + rangos entrada/salida
+6. **Gestor de riesgo / cartera** — veredicto FINAL en el formato del email
+
+Luego un rol de cartera escribe la **Visión de cartera** que encabeza el informe.
+Cada activo queda con un bloque: Puntuación 0-100, Recomendación
+(Compra fuerte/floja · Neutral · Venta floja/fuerte), Plazo, Precio objetivo de
+entrada y de salida, Próximo evento relevante, y Justificación.
+
+Los indicadores (RSI, SMA 50/200, 52 s, volumen) los aporta `agents/seguimiento.py`.
+
+**Coste**: ~6 llamadas por activo + 1. Con la watchlist de 21 activos ≈ 127 llamadas
+y **~20-40 min** por ejecución. No es asesoría financiera: es un scaffold de análisis.
+
+```bash
+bin/analiza                       # watchlist completa, multi-agente → email + Telegram
+bin/analiza --only BTC ETH        # solo esos activos (para probar)
+bin/analiza --limit 3             # solo los 3 primeros
+bin/analiza --rapido [SÍMBOLOS]   # modo antiguo: 1 resumen de 180 palabras (barato, rápido)
+python3 agents/trading.py AAPL BTC ^GSPC   # solo datos brutos, sin LLM
 ```
 
-**Watchlist diaria** (`agents/watchlist.txt`): edita para añadir tus activos. Una línea por activo.
+**Watchlist diaria** (`agents/watchlist.txt`): un símbolo por línea. Las líneas
+`nombre tcg juego` (cartas) las ignora el motor de mercado.
 
-**Email**: necesita `JARVIS_EMAIL_PASSWORD` en `bridge/.env` (Gmail App Password).  
+**Email**: necesita `JARVIS_EMAIL_PASSWORD` en `bridge/.env` (Gmail App Password).
 Cómo obtenerlo: myaccount.google.com → Seguridad → Verificación en 2 pasos → Contraseñas de app → crear "Jarvis".
 
 **Triggers de voz/Telegram** que debes reconocer:
-- *"analiza AAPL"*, *"cómo va BTC hoy"*, *"resumen del mercado"* → `bin/analiza SYMBOL`
-- *"agentes: analiza mi cartera"* → modo multi-agente con `bin/analiza --watchlist`
+- *"analiza AAPL"*, *"cómo va BTC hoy"* → `bin/analiza --only SÍMBOLO`
+- *"resumen rápido del mercado"* → `bin/analiza --rapido`
+- *"agentes: analiza mi cartera"* → `bin/analiza` (ya es multi-agente)
 
-**Cron (Pi)** — añadido por `bin/install-pi`:
+**Cron (Pi)** — añadido por `bin/install-pi` (más temprano porque tarda ~20-40 min):
 ```
-5 8 * * * cd /home/pi/jarvis && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
+0 7 * * * cd /home/pi/jarvis && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
 ```
 
-El resumen se guarda también en `vault/outputs/mercado.md` (visible en el HUD).
+El informe se guarda en `vault/outputs/mercado.md` (visible en el HUD). Telegram
+recibe solo la Visión de cartera; el informe completo va en el email.
+
+### Seguimiento con filtro de eventos
+
+`agents/seguimiento.py` + `bin/seguimiento` hacen seguimiento diario de la misma
+`agents/watchlist.txt`, pero al revés que `bin/analiza`: en vez de resumir todo cada
+día, calculan indicadores (RSI 14, SMA 50/200, máx/mín de 52 semanas, ratio de
+volumen), guardan histórico en SQLite (`vault/raw/seguimiento.db`) y **solo llaman
+al LLM para los tickers que disparan una señal**. Días tranquilos: no gasta tokens
+y no manda nada por Telegram (solo actualiza `vault/outputs/seguimiento.md`).
+
+Señales que disparan análisis (umbrales en `TH`, overridables por env `JARVIS_SEG_*`):
+movimiento diario ≥4%, 5d ≥8%, volumen ≥x2 vs media 20d, RSI ≥75 o ≤25, a <2% de
+máx/mín de 52 semanas, cruce de medias 50/200.
+
+```bash
+bin/seguimiento                 # barrido + veredicto LLM + Telegram si hay señales
+bin/seguimiento scan            # solo la tabla de indicadores, sin LLM
+bin/seguimiento scan --json     # + volcado JSON
+bin/seguimiento scan --notify --always   # notifica aunque no haya nada
+bin/seguimiento score           # cómo se movieron los tickers marcados hace ≥14 días
+```
+
+El veredicto es de *seguimiento*, nunca "compra/vende": clasifica en revisar hoy /
+solo vigilar. `score` es diagnóstico del filtro (¿los flags anticiparon algo?), no
+rendimiento de una estrategia.
+
+**Integración con el email diario**: `bin/seguimiento` corre a las 8:00 y escribe
+`vault/outputs/seguimiento.md`; `bin/analiza` corre a las 8:05 y, si ese fichero es
+de hoy, **añade el seguimiento a su email** ("Jarvis: Mercado …"). Así recibes un
+único correo con el resumen de mercado + el análisis de tu watchlist. Telegram
+manda los dos por separado. Para que `bin/seguimiento` mande su propio email
+(standalone, sin depender de `analiza`): `bin/seguimiento scan --notify --email`.
+
+**Triggers de voz/Telegram**:
+- *"cómo va mi watchlist"*, *"algo importante en mis tickers"* → `bin/seguimiento`
+- *"revisa el seguimiento"* / *"¿acertaron los avisos?"* → `bin/seguimiento score`
+
+**Cron (Pi)** — diario, justo antes del `bin/analiza` de las 8:05:
+```
+0 8 * * * cd /home/pi/jarvis && bin/seguimiento >> /tmp/jarvis-seguimiento.log 2>&1
+0 18 * * 5 cd /home/pi/jarvis && bin/seguimiento score >> /tmp/jarvis-seguimiento.log 2>&1
+```
 
 ## Cardmarket (MKM API)
 
