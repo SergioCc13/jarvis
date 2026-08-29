@@ -89,6 +89,8 @@ echo "[5/7] Setting up crontab..."
 
 CRON_MARKER="# === Jarvis ==="
 CRON_BLOCK="$CRON_MARKER
+# Auto-update from GitHub — every 5 min
+*/5 * * * * cd $JARVIS_DIR && bash bin/auto-update >> /tmp/jarvis-update.log 2>&1
 # Vault refresh — 7:30 AM (before brief)
 30 7 * * * cd $JARVIS_DIR && bin/vault-refresh >> /tmp/jarvis-vault.log 2>&1
 # Morning brief — 8:00 AM

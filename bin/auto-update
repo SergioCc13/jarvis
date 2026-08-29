@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# Auto-update Jarvis from GitHub. Run via cron (Pi) or LaunchAgent (Mac).
+# Detects what changed and only restarts affected services.
+set -uo pipefail
+
+JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$JARVIS_DIR"
+
+# Check network before anything
+git fetch origin main -q 2>/dev/null || exit 0
+
+BEFORE=$(git rev-parse HEAD)
+AFTER=$(git rev-parse origin/main)
+
+[ "$BEFORE" = "$AFTER" ] && exit 0   # nothing new
+
+echo "[auto-update] $(date '+%H:%M:%S') — updating $BEFORE → $AFTER"
+git reset --hard origin/main -q
+
+CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null || true)
+
+# Restart bridge if server.py or notify.py changed
+if echo "$CHANGED" | grep -qE "^bridge/(server|notify)\.py"; then
+  if systemctl is-active --quiet jarvis-bridge 2>/dev/null; then
+    systemctl restart jarvis-bridge && echo "[auto-update] jarvis-bridge restarted"
+  elif sudo systemctl is-active --quiet jarvis-bridge 2>/dev/null; then
+    sudo systemctl restart jarvis-bridge && echo "[auto-update] jarvis-bridge restarted (sudo)"
+  fi
+fi
+
+# Restart telegram bot if it changed
+if echo "$CHANGED" | grep -q "^bridge/telegram_bot.py"; then
+  systemctl restart jarvis-telegram 2>/dev/null || sudo systemctl restart jarvis-telegram 2>/dev/null || true
+  echo "[auto-update] jarvis-telegram restarted"
+fi
+
+# HUD files (html/css/js) are served statically — no restart needed
+if echo "$CHANGED" | grep -qE "^hud/"; then
+  echo "[auto-update] HUD updated — reload browser to see changes"
+fi
+
+echo "[auto-update] done"
