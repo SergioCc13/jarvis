@@ -1268,6 +1268,21 @@ function initChat(){
   });
 }
 
+/* ── SSE: real-time notices from bridge ─────────────────────────────── */
+
+function initEvents(){
+  if(!_token()) return;
+  const url = `${BRIDGE_URL}/events?token=${encodeURIComponent(_token())}`;
+  const src = new EventSource(url);
+  src.onmessage = e => {
+    try {
+      const d = JSON.parse(e.data);
+      if(d.type === 'notice') _addMsg('jarvis', d.text);
+    } catch(_){}
+  };
+  src.onerror = () => { src.close(); setTimeout(initEvents, 5000); };
+}
+
 /* ── boot ───────────────────────────────────────────────────────────── */
 
 async function refreshAll(){
@@ -1279,6 +1294,7 @@ initLinks();
 initCore();
 initBackground();
 initChat();
+initEvents();
 initClapDetect();
 setInterval(tickClock, 1000);
 refreshAll();

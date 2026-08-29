@@ -9,6 +9,7 @@ POST /register, and Jarvis (Claude) can list them with GET /devices.
 """
 import json
 import os
+import queue
 import socket
 import subprocess
 import sys
@@ -18,6 +19,24 @@ import urllib.parse
 import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+# ── SSE event bus ─────────────────────────────────────────────────────────────
+_sse_clients: list[queue.Queue] = []
+
+
+def _push_event(payload: dict):
+    """Push a JSON event to all connected HUD /events clients."""
+    dead = []
+    for q in _sse_clients:
+        try:
+            q.put_nowait(payload)
+        except queue.Full:
+            dead.append(q)
+    for q in dead:
+        try:
+            _sse_clients.remove(q)
+        except ValueError:
+            pass
 
 BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 JARVIS_DIR = os.environ.get("JARVIS_DIR", os.path.dirname(BRIDGE_DIR))
@@ -264,7 +283,9 @@ def ask(text):
         reply = ask_claude(text)
         if _ollama_active:
             _ollama_active = False
-            _notify_async("✅ Claude disponible de nuevo — volviendo a Claude.")
+            msg = "Claude disponible de nuevo."
+            _notify_async("✅ " + msg)
+            _push_event({"type": "notice", "text": "✅ " + msg})
         return reply
     except Exception as e:
         ollama_ip = _pick_ollama()
@@ -272,7 +293,9 @@ def ask(text):
             sys.stderr.write(f"[bridge] Claude failed ({type(e).__name__}), falling back to Ollama on {ollama_ip}\n")
             if not _ollama_active:
                 _ollama_active = True
-                _notify_async(f"⚠️ Claude no disponible — usando Ollama ({OLLAMA_MODEL}) en local.")
+                msg = f"Claude no disponible. Usando Ollama ({OLLAMA_MODEL}) en local."
+                _notify_async("⚠️ " + msg)
+                _push_event({"type": "notice", "text": "⚠️ " + msg})
             return _ask_ollama(ollama_ip, text)
         raise
 
@@ -334,8 +357,39 @@ class Handler(BaseHTTPRequestHandler):
 
         return self._send_json(200, {"reply": reply})
 
+    def _handle_events(self):
+        qs = self.path.split("?", 1)[1] if "?" in self.path else ""
+        token = urllib.parse.parse_qs(qs).get("token", [""])[0]
+        if token != CONFIG["token"]:
+            return self._send_json(401, {"error": "unauthorized"})
+        self.send_response(200)
+        self.send_header("Content-Type", "text/event-stream")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        q: queue.Queue = queue.Queue(maxsize=50)
+        _sse_clients.append(q)
+        try:
+            while True:
+                try:
+                    payload = q.get(timeout=25)
+                    self.wfile.write(f"data: {json.dumps(payload)}\n\n".encode())
+                    self.wfile.flush()
+                except queue.Empty:
+                    self.wfile.write(b": ka\n\n")  # keepalive
+                    self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError, OSError):
+            pass
+        finally:
+            try:
+                _sse_clients.remove(q)
+            except ValueError:
+                pass
+
     def do_GET(self):
         path = self.path.split("?")[0]
+        if path == "/events":
+            return self._handle_events()
         if path == "/devices":
             qs = self.path.split("?", 1)[1] if "?" in self.path else ""
             token = urllib.parse.parse_qs(qs).get("token", [""])[0]

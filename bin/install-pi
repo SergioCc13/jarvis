@@ -77,8 +77,33 @@ CRON_BLOCK="$CRON_MARKER
 ( crontab -l 2>/dev/null | grep -v "^$CRON_MARKER" | grep -v "jarvis" ; echo "$CRON_BLOCK" ) | crontab -
 echo "  ✓ Crontab updated"
 
-# ── 5. verify ────────────────────────────────────────────────────────
-echo "[5/5] Status check..."
+# ── 5. Tailscale serve routes ─────────────────────────────────────────
+echo "[5/6] Configuring Tailscale serve routes..."
+
+if command -v tailscale >/dev/null 2>&1; then
+  CURRENT=$(tailscale serve status 2>/dev/null || true)
+  add_route() {
+    local path="$1" target="$2"
+    if echo "$CURRENT" | grep -q "$target"; then
+      echo "  ✓ /$(basename $path) already configured"
+    else
+      tailscale serve https "$path" "$target" 2>/dev/null && echo "  ✓ $path → $target" || echo "  ✗ failed: $path"
+    fi
+  }
+  add_route /        http://127.0.0.1:8791
+  add_route /chat    http://127.0.0.1:8792/chat
+  add_route /voice   http://127.0.0.1:8792/voice
+  add_route /events  http://127.0.0.1:8792/events
+else
+  echo "  Tailscale not found — add routes manually:"
+  echo "    tailscale serve https / http://127.0.0.1:8791"
+  echo "    tailscale serve https /chat http://127.0.0.1:8792/chat"
+  echo "    tailscale serve https /voice http://127.0.0.1:8792/voice"
+  echo "    tailscale serve https /events http://127.0.0.1:8792/events"
+fi
+
+# ── 6. verify ────────────────────────────────────────────────────────
+echo "[6/6] Status check..."
 echo ""
 for svc in jarvis-bridge jarvis-telegram; do
   STATUS=$(systemctl is-active "$svc" 2>/dev/null || echo "unknown")
