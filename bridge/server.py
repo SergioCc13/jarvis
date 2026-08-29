@@ -254,15 +254,26 @@ def ask_claude(text):
     return data["result"]
 
 
+_ollama_active = False  # track whether we already notified about the switch
+
+
 def ask(text):
     """Try Claude first; fall back to Ollama if Claude fails."""
+    global _ollama_active
     try:
-        return ask(text)
+        reply = ask_claude(text)
+        if _ollama_active:
+            _ollama_active = False
+            _notify_async("✅ Claude disponible de nuevo — volviendo a Claude.")
+        return reply
     except Exception as e:
         ollama_ip = _pick_ollama()
         if ollama_ip:
             sys.stderr.write(f"[bridge] Claude failed ({type(e).__name__}), falling back to Ollama on {ollama_ip}\n")
-            return f"[Ollama/{OLLAMA_MODEL}] " + _ask_ollama(ollama_ip, text)
+            if not _ollama_active:
+                _ollama_active = True
+                _notify_async(f"⚠️ Claude no disponible — usando Ollama ({OLLAMA_MODEL}) en local.")
+            return _ask_ollama(ollama_ip, text)
         raise
 
 
