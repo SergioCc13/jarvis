@@ -18,23 +18,50 @@ echo "User: $PI_USER"
 echo ""
 
 # ── 1. Pull latest code ───────────────────────────────────────────────
-echo "[1/5] Pulling latest code..."
+echo "[1/7] Pulling latest code..."
 git pull
 
 # ── 2. bridge/.env ───────────────────────────────────────────────────
 if [ ! -f bridge/.env ]; then
   echo ""
-  echo "[2/5] bridge/.env not found."
+  echo "[2/7] bridge/.env not found."
   echo "      Copy it from your Mac first:"
   echo "        scp bridge/.env pi@100.105.221.87:$JARVIS_DIR/bridge/.env"
   echo "      Then re-run this script."
   exit 1
 else
-  echo "[2/5] bridge/.env found ✓"
+  echo "[2/7] bridge/.env found ✓"
 fi
 
-# ── 3. systemd services ───────────────────────────────────────────────
-echo "[3/5] Installing systemd services..."
+# ── 3. Ollama (local LLM fallback) ────────────────────────────────────
+echo "[3/7] Installing Ollama..."
+
+OLLAMA_MODEL_LOCAL="${JARVIS_OLLAMA_MODEL_LOCAL:-qwen2.5:3b}"
+
+if command -v ollama >/dev/null 2>&1; then
+  echo "  ✓ ollama already installed ($(ollama --version 2>/dev/null | head -1))"
+else
+  echo "  Downloading Ollama..."
+  curl -fsSL https://ollama.com/install.sh | sh
+  echo "  ✓ ollama installed"
+fi
+
+# Start ollama service temporarily to pull model
+sudo systemctl start ollama 2>/dev/null || true
+sleep 3
+
+if ollama list 2>/dev/null | grep -q "${OLLAMA_MODEL_LOCAL%%:*}"; then
+  echo "  ✓ $OLLAMA_MODEL_LOCAL already pulled"
+else
+  echo "  Pulling $OLLAMA_MODEL_LOCAL (may take a few minutes)..."
+  ollama pull "$OLLAMA_MODEL_LOCAL" && echo "  ✓ $OLLAMA_MODEL_LOCAL ready" || echo "  ✗ pull failed — run manually: ollama pull $OLLAMA_MODEL_LOCAL"
+fi
+
+# Enable ollama system service (installed by install.sh)
+sudo systemctl enable --now ollama 2>/dev/null && echo "  ✓ ollama service enabled" || true
+
+# ── 4. systemd services ───────────────────────────────────────────────
+echo "[4/7] Installing systemd services..."
 
 for svc in bridge/jarvis-bridge.service bridge/jarvis-telegram.service agents/jarvis-agent.service; do
   name="$(basename "$svc")"
@@ -57,8 +84,8 @@ for svc in jarvis-bridge jarvis-telegram; do
   echo "  ✓ $svc enabled and started"
 done
 
-# ── 4. crontab ───────────────────────────────────────────────────────
-echo "[4/5] Setting up crontab..."
+# ── 5. crontab ───────────────────────────────────────────────────────
+echo "[5/7] Setting up crontab..."
 
 CRON_MARKER="# === Jarvis ==="
 CRON_BLOCK="$CRON_MARKER
@@ -77,8 +104,8 @@ CRON_BLOCK="$CRON_MARKER
 ( crontab -l 2>/dev/null | grep -v "^$CRON_MARKER" | grep -v "jarvis" ; echo "$CRON_BLOCK" ) | crontab -
 echo "  ✓ Crontab updated"
 
-# ── 5. Tailscale serve routes ─────────────────────────────────────────
-echo "[5/6] Configuring Tailscale serve routes..."
+# ── 6. Tailscale serve routes ─────────────────────────────────────────
+echo "[6/7] Configuring Tailscale serve routes..."
 
 if command -v tailscale >/dev/null 2>&1; then
   CURRENT=$(tailscale serve status 2>/dev/null || true)
@@ -102,8 +129,8 @@ else
   echo "    tailscale serve https /events http://127.0.0.1:8792/events"
 fi
 
-# ── 6. verify ────────────────────────────────────────────────────────
-echo "[6/6] Status check..."
+# ── 7. verify ────────────────────────────────────────────────────────
+echo "[7/7] Status check..."
 echo ""
 for svc in jarvis-bridge jarvis-telegram; do
   STATUS=$(systemctl is-active "$svc" 2>/dev/null || echo "unknown")

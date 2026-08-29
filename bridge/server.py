@@ -214,14 +214,16 @@ def transcribe(audio_bytes, content_type):
 
 
 # ── Ollama fallback ───────────────────────────────────────────────────────────
-# JARVIS_OLLAMA_BACKENDS = comma-separated Tailscale IPs running Ollama (port 11434)
-# JARVIS_OLLAMA_MODEL    = model to use (default: qwen2.5:7b)
+# JARVIS_OLLAMA_BACKENDS   = comma-separated IPs running Ollama (port 11434)
+# JARVIS_OLLAMA_MODEL      = model for remote backends (default: qwen2.5:7b)
+# JARVIS_OLLAMA_MODEL_LOCAL = model for 127.0.0.1 Pi-local (default: qwen2.5:3b)
 _OLLAMA_IPS = [
     ip.strip()
     for ip in os.environ.get("JARVIS_OLLAMA_BACKENDS", "").split(",")
     if ip.strip()
 ]
 OLLAMA_MODEL = os.environ.get("JARVIS_OLLAMA_MODEL", "qwen2.5:7b")
+OLLAMA_MODEL_LOCAL = os.environ.get("JARVIS_OLLAMA_MODEL_LOCAL", "qwen2.5:3b")
 OLLAMA_SYSTEM = (
     "Eres Jarvis, un asistente personal de IA. Responde siempre en español, "
     "de forma concisa y directa. Puedes ejecutar tareas en el sistema cuando el "
@@ -240,9 +242,10 @@ def _pick_ollama():
 
 def _ask_ollama(ip, text):
     global _ollama_history
+    model = OLLAMA_MODEL_LOCAL if ip in ("127.0.0.1", "localhost") else OLLAMA_MODEL
     _ollama_history.append({"role": "user", "content": text})
     messages = [{"role": "system", "content": OLLAMA_SYSTEM}] + _ollama_history[-30:]
-    payload = json.dumps({"model": OLLAMA_MODEL, "messages": messages, "stream": False}).encode()
+    payload = json.dumps({"model": model, "messages": messages, "stream": False}).encode()
     req = urllib.request.Request(
         f"http://{ip}:11434/api/chat",
         data=payload,
@@ -290,10 +293,12 @@ def ask(text):
     except Exception as e:
         ollama_ip = _pick_ollama()
         if ollama_ip:
-            sys.stderr.write(f"[bridge] Claude failed ({type(e).__name__}), falling back to Ollama on {ollama_ip}\n")
+            active_model = OLLAMA_MODEL_LOCAL if ollama_ip in ("127.0.0.1", "localhost") else OLLAMA_MODEL
+            sys.stderr.write(f"[bridge] Claude failed ({type(e).__name__}), falling back to Ollama ({active_model}) on {ollama_ip}\n")
             if not _ollama_active:
                 _ollama_active = True
-                msg = f"Claude no disponible. Usando Ollama ({OLLAMA_MODEL}) en local."
+                where = "Pi" if ollama_ip in ("127.0.0.1", "localhost") else ollama_ip
+                msg = f"Claude no disponible. Usando Ollama ({active_model}) en {where}."
                 _notify_async("⚠️ " + msg)
                 _push_event({"type": "notice", "text": "⚠️ " + msg})
             return _ask_ollama(ollama_ip, text)
