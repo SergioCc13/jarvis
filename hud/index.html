@@ -120,7 +120,7 @@
   }
 
   /* ── portrait / phone (< 640px) ─────────────────────────────────
-     orb at top, panels in 2 cols below, all scrollable             */
+     panels 2×2 at top, then orb+chat below, all scrollable        */
   @media (max-width:639px){
     html,body{ overflow:auto; height:auto; }
     .app{
@@ -132,11 +132,11 @@
     --gap: 6px; --radius: 12px;
     .dashboard{
       grid-template-areas:
-        "center  center"
         "habits  agenda"
-        "skills  feed";
+        "skills  feed"
+        "center  center";
       grid-template-columns: 1fr 1fr;
-      grid-template-rows: auto auto auto;
+      grid-template-rows: auto auto 1fr;
       overflow:visible;
     }
     .orb-panel{ min-height:160px; max-height:220px; }
@@ -178,16 +178,19 @@
     display:flex; justify-content:space-between; align-items:center;
     padding-bottom:7px; margin-bottom:7px;
     border-bottom:1px solid var(--border);
-    flex-shrink:0; cursor:pointer; user-select:none;
+    flex-shrink:0; cursor:pointer; user-select:none; gap:6px;
   }
-  .panel-head:hover h2{ color:var(--text); }
+  .panel-head:hover h2{ opacity:.8; }
+  .panel-head h2::before{ content:'▸ '; font-size:9px; }
   .minimize-btn{
-    background:none; border:none; cursor:pointer; padding:0 2px;
-    color:var(--text-dim); font-size:10px; line-height:1;
-    transition: color .2s, transform .25s; flex-shrink:0; margin-left:6px;
+    background:#111518; border:1px solid var(--border); border-radius:5px;
+    cursor:pointer; padding:0 6px; height:18px;
+    color:var(--text-dim); font-size:11px; line-height:18px;
+    transition: color .2s, border-color .2s; flex-shrink:0;
+    font-family:var(--mono);
   }
-  .minimize-btn:hover{ color:var(--accent); }
-  .panel.minimized .minimize-btn{ transform: rotate(-90deg); }
+  .minimize-btn:hover{ color:var(--accent); border-color:var(--accent); }
+  .panel-head-actions{ display:flex; align-items:center; gap:4px; margin-left:auto; flex-shrink:0; }
   .panel-head h2{
     font-size:10px; letter-spacing:2px; text-transform:uppercase;
     color:var(--accent); font-weight:600; font-family:var(--sans);
@@ -294,6 +297,18 @@
   .chat-input:focus{ border-color:var(--accent); }
   .chat-input::placeholder{ color:var(--text-dim); }
 
+  .chat-action-btn{
+    flex-shrink:0; width:34px; height:34px; border-radius:50%;
+    border:1px solid var(--border); background:#111518;
+    color:var(--text-dim); font-size:15px; cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    transition: background .2s, border-color .2s, color .2s;
+  }
+  .chat-action-btn:hover{ border-color:var(--accent); color:var(--accent); }
+  .send-btn{
+    background:var(--accent); border-color:var(--accent); color:#0d1a14;
+  }
+  .send-btn:hover{ background:#5a9478; }
   .voice-btn{
     flex-shrink:0; width:34px; height:34px; border-radius:50%;
     background:var(--accent-dim); border:1px solid var(--accent);
@@ -450,10 +465,12 @@
 
     <!-- left col: hábitos + skills -->
     <section class="panel" id="panel-habitos">
-      <div class="panel-head" onclick="togglePanel('panel-habitos')">
-        <h2>Hábitos</h2>
-        <span class="badge" id="habitos-badge">—</span>
-        <button class="minimize-btn" tabindex="-1">▾</button>
+      <div class="panel-head">
+        <h2 onclick="togglePanel('panel-habitos')" style="flex:1">Hábitos</h2>
+        <div class="panel-head-actions">
+          <span class="badge" id="habitos-badge">—</span>
+          <button class="minimize-btn" id="min-panel-habitos" onclick="togglePanel('panel-habitos')" tabindex="-1">−</button>
+        </div>
       </div>
       <div class="panel-body" id="habitos-body">
         <div class="empty">cargando…</div>
@@ -461,10 +478,12 @@
     </section>
 
     <section class="panel" id="panel-skills">
-      <div class="panel-head" onclick="togglePanel('panel-skills')">
-        <h2>Comandos</h2>
-        <span class="badge" id="skills-badge">—</span>
-        <button class="minimize-btn" tabindex="-1">▾</button>
+      <div class="panel-head">
+        <h2 onclick="togglePanel('panel-skills')" style="flex:1">Comandos</h2>
+        <div class="panel-head-actions">
+          <span class="badge" id="skills-badge">—</span>
+          <button class="minimize-btn" id="min-panel-skills" onclick="togglePanel('panel-skills')" tabindex="-1">−</button>
+        </div>
       </div>
       <div class="panel-body" id="skills-body">
         <div class="empty">cargando…</div>
@@ -482,9 +501,13 @@
           <div class="chat-msg chat-msg-hint">Escribe o pulsa 🎙 — o da 2 palmadas para hablar</div>
         </div>
         <div class="chat-input-row">
+          <button class="chat-action-btn" id="attach-btn" title="Adjuntar">📎</button>
           <textarea class="chat-input" id="chat-input" placeholder="Escribe a Jarvis…" autocomplete="off" rows="1"></textarea>
+          <button class="chat-action-btn send-btn" id="send-btn" title="Enviar">➤</button>
           <button class="voice-btn" id="voice-btn" title="Pulsa para hablar (o 2 palmadas)">🎙</button>
-          <span class="clap-status" id="clap-status">👏</span>
+          <button class="chat-action-btn" id="clap-btn" title="Activar con palmadas">
+            <span class="clap-status" id="clap-status">〰</span>
+          </button>
         </div>
       </div>
       <div class="brief-strip" id="brief-strip">
@@ -498,10 +521,12 @@
 
     <!-- right col: agenda + feed -->
     <section class="panel" id="panel-agenda">
-      <div class="panel-head" onclick="togglePanel('panel-agenda')">
-        <h2>Agenda de hoy</h2>
-        <span class="badge" id="agenda-badge">—</span>
-        <button class="minimize-btn" tabindex="-1">▾</button>
+      <div class="panel-head">
+        <h2 onclick="togglePanel('panel-agenda')" style="flex:1">Agenda de hoy</h2>
+        <div class="panel-head-actions">
+          <span class="badge" id="agenda-badge">—</span>
+          <button class="minimize-btn" id="min-panel-agenda" onclick="togglePanel('panel-agenda')" tabindex="-1">−</button>
+        </div>
       </div>
       <div class="panel-body" id="agenda-body">
         <div class="empty">cargando…</div>
@@ -509,10 +534,12 @@
     </section>
 
     <section class="panel" id="panel-feed">
-      <div class="panel-head" onclick="togglePanel('panel-feed')">
-        <h2>Recordatorios &amp; inbox</h2>
-        <span class="badge" id="feed-badge">—</span>
-        <button class="minimize-btn" tabindex="-1">▾</button>
+      <div class="panel-head">
+        <h2 onclick="togglePanel('panel-feed')" style="flex:1">Recordatorios &amp; inbox</h2>
+        <div class="panel-head-actions">
+          <span class="badge" id="feed-badge">—</span>
+          <button class="minimize-btn" id="min-panel-feed" onclick="togglePanel('panel-feed')" tabindex="-1">−</button>
+        </div>
       </div>
       <div class="panel-body" id="feed-body">
         <div class="empty">cargando…</div>
@@ -1077,14 +1104,19 @@ function initLinks(){
 function togglePanel(id){
   const panel = document.getElementById(id);
   const min = panel.classList.toggle('minimized');
+  const btn = document.getElementById('min-'+id);
+  if(btn) btn.textContent = min ? '+' : '−';
   try{ localStorage.setItem('panel_min_'+id, min ? '1' : '0'); }catch(_){}
 }
 
 function restorePanels(){
   ['panel-habitos','panel-skills','panel-agenda','panel-feed'].forEach(id=>{
     try{
-      if(localStorage.getItem('panel_min_'+id)==='1')
+      if(localStorage.getItem('panel_min_'+id)==='1'){
         document.getElementById(id).classList.add('minimized');
+        const btn = document.getElementById('min-'+id);
+        if(btn) btn.textContent = '+';
+      }
     }catch(_){}
   });
 }
@@ -1291,23 +1323,25 @@ function autoGrow(el){
 }
 
 function initChat(){
-  const input = document.getElementById('chat-input');
-  const btn   = document.getElementById('voice-btn');
+  const input   = document.getElementById('chat-input');
+  const voiceBtn = document.getElementById('voice-btn');
+  const sendBtn  = document.getElementById('send-btn');
+
+  function doSend(){
+    const text = input.value.trim();
+    if(!text) return;
+    sendChat(text);
+    input.value = '';
+    autoGrow(input);
+  }
 
   input.addEventListener('input', () => autoGrow(input));
-
   input.addEventListener('keydown', e=>{
-    if(e.key==='Enter' && !e.shiftKey){
-      e.preventDefault();
-      const text = input.value.trim();
-      if(!text) return;
-      sendChat(text);
-      input.value = '';
-      autoGrow(input);
-    }
+    if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); doSend(); }
   });
+  sendBtn.addEventListener('click', doSend);
 
-  btn.addEventListener('click', ()=>{
+  voiceBtn.addEventListener('click', ()=>{
     if(_recording) stopVoice();
     else startVoice();
   });
