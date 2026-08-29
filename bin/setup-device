@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# One-command setup for any secondary device (PC/WSL2, Linux desktop).
+# Run from inside the jarvis repo: bash bin/setup-device
+#
+# What it does:
+#   1. Installs auto-update cron (git pull every 5 min)
+#   2. Optionally starts the device agent (agents/device_agent.py)
+#
+# Usage:
+#   git clone <repo> ~/jarvis && cd ~/jarvis && bash bin/setup-device
+
+set -euo pipefail
+JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$JARVIS_DIR"
+
+echo "=== Jarvis device setup ==="
+echo "Dir: $JARVIS_DIR"
+echo ""
+
+# ── 1. Auto-update cron ──────────────────────────────────────────────
+echo "[1/2] Installing auto-update cron (every 5 min)..."
+
+CRON_LINE="*/5 * * * * cd $JARVIS_DIR && bash bin/auto-update >> /tmp/jarvis-update.log 2>&1"
+MARKER="# jarvis-auto-update"
+
+# Remove old entry if present, add new one
+( crontab -l 2>/dev/null | grep -v "$MARKER" | grep -v "auto-update" ; \
+  echo "$MARKER" ; echo "$CRON_LINE" ) | crontab -
+
+# Ensure cron daemon is running (WSL2 needs this)
+if ! pgrep -x cron >/dev/null 2>&1 && ! pgrep -x crond >/dev/null 2>&1; then
+  echo "  Starting cron daemon..."
+  sudo service cron start 2>/dev/null || sudo crond 2>/dev/null || true
+fi
+
+echo "  ✓ Auto-update cron installed"
+echo "    Log: tail -f /tmp/jarvis-update.log"
+
+# ── 2. Device agent ──────────────────────────────────────────────────
+echo ""
+echo "[2/2] Device agent setup..."
+
+if [ ! -f agents/.env ]; then
+  echo "  agents/.env not found — copy and fill in:"
+  echo "    cp agents/env.example agents/.env"
+  echo "    # Set JARVIS_HUB_URL=http://100.105.221.87:8792"
+  echo "    # Set JARVIS_HUB_TOKEN=<token from bridge/config.json>"
+else
+  echo "  agents/.env found ✓"
+  # Check if already running
+  if pgrep -f "agents/device_agent.py" >/dev/null 2>&1; then
+    echo "  ✓ Device agent already running"
+  else
+    echo "  Starting device agent..."
+    nohup python3 "$JARVIS_DIR/agents/device_agent.py" >> /tmp/jarvis-agent.log 2>&1 &
+    echo "  ✓ Device agent started (PID $!)"
+    echo "    Log: tail -f /tmp/jarvis-agent.log"
+  fi
+fi
+
+echo ""
+echo "=== Setup complete ==="
+echo ""
+echo "Auto-update is active. Every 5 min this device checks GitHub for changes."
+echo "Run 'bash bin/auto-update' manually to force an immediate update."

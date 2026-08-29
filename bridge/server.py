@@ -395,6 +395,12 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/events":
             return self._handle_events()
+        if path == "/version":
+            try:
+                h = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=JARVIS_DIR, text=True).strip()
+            except Exception:
+                h = "unknown"
+            return self._send_json(200, {"hash": h})
         if path == "/devices":
             qs = self.path.split("?", 1)[1] if "?" in self.path else ""
             token = urllib.parse.parse_qs(qs).get("token", [""])[0]

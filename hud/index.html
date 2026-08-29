@@ -1347,6 +1347,26 @@ function initChat(){
   });
 }
 
+/* ── auto-reload when Pi has a new version ──────────────────────────── */
+
+(function initVersionWatch(){
+  let known = null;
+  async function check(){
+    try{
+      const r = await fetch(`${BRIDGE_URL}/version`, {cache:'no-store'});
+      if(!r.ok) return;
+      const {hash} = await r.json();
+      if(!known){ known = hash; return; }
+      if(hash !== known){
+        console.log('[jarvis] new version detected, reloading…');
+        location.reload();
+      }
+    }catch(_){}
+  }
+  setInterval(check, 60_000);
+  check();
+})();
+
 /* ── SSE: real-time notices from bridge ─────────────────────────────── */
 
 function initEvents(){
