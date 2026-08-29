@@ -194,6 +194,48 @@ def transcribe(audio_bytes, content_type):
         return json.loads(resp.read())["text"].strip()
 
 
+# ── Ollama fallback ───────────────────────────────────────────────────────────
+# JARVIS_OLLAMA_BACKENDS = comma-separated Tailscale IPs running Ollama (port 11434)
+# JARVIS_OLLAMA_MODEL    = model to use (default: qwen2.5:7b)
+_OLLAMA_IPS = [
+    ip.strip()
+    for ip in os.environ.get("JARVIS_OLLAMA_BACKENDS", "").split(",")
+    if ip.strip()
+]
+OLLAMA_MODEL = os.environ.get("JARVIS_OLLAMA_MODEL", "qwen2.5:7b")
+OLLAMA_SYSTEM = (
+    "Eres Jarvis, un asistente personal de IA. Responde siempre en español, "
+    "de forma concisa y directa. Puedes ejecutar tareas en el sistema cuando el "
+    "usuario lo pida."
+)
+_ollama_history = []  # persists for the session
+
+
+def _pick_ollama():
+    """Return first reachable Ollama IP, or None."""
+    for ip in _OLLAMA_IPS:
+        if _reachable(ip, port=11434):
+            return ip
+    return None
+
+
+def _ask_ollama(ip, text):
+    global _ollama_history
+    _ollama_history.append({"role": "user", "content": text})
+    messages = [{"role": "system", "content": OLLAMA_SYSTEM}] + _ollama_history[-30:]
+    payload = json.dumps({"model": OLLAMA_MODEL, "messages": messages, "stream": False}).encode()
+    req = urllib.request.Request(
+        f"http://{ip}:11434/api/chat",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        data = json.loads(resp.read())
+    reply = data["message"]["content"].strip()
+    _ollama_history.append({"role": "assistant", "content": reply})
+    return reply
+
+
 def ask_claude(text):
     args = ["claude", "-p", text, "--output-format", "json"]
     if CONFIG.get("session_started"):
@@ -210,6 +252,18 @@ def ask_claude(text):
         CONFIG["session_started"] = True
         save_config(CONFIG)
     return data["result"]
+
+
+def ask(text):
+    """Try Claude first; fall back to Ollama if Claude fails."""
+    try:
+        return ask(text)
+    except Exception as e:
+        ollama_ip = _pick_ollama()
+        if ollama_ip:
+            sys.stderr.write(f"[bridge] Claude failed ({type(e).__name__}), falling back to Ollama on {ollama_ip}\n")
+            return f"[Ollama/{OLLAMA_MODEL}] " + _ask_ollama(ollama_ip, text)
+        raise
 
 
 def synthesize(text):
@@ -263,7 +317,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(400, {"error": "empty text"})
 
         try:
-            reply = ask_claude(text)
+            reply = ask(text)
         except Exception as e:
             return self._send_json(502, {"error": f"claude failed: {e}"})
 
@@ -336,7 +390,7 @@ class Handler(BaseHTTPRequestHandler):
             reply = "No escuché nada, intenta de nuevo."
         else:
             try:
-                reply = ask_claude(transcript)
+                reply = ask(transcript)
             except Exception as e:
                 return self._send_text(502, f"claude failed: {e}")
 
