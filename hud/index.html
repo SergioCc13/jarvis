@@ -193,6 +193,7 @@
     font-family:var(--mono); font-size:9px; color:var(--text-dim);
     border:1px solid var(--border); border-radius:6px; padding:1px 6px;
   }
+  .badge:empty, .badge.blank{ display:none; }
   .badge.alert{ color:var(--text-dim); border-color:var(--border); }
   .badge.ok{ color:var(--accent); border-color:var(--border-soft); }
   .panel-body{
@@ -543,7 +544,7 @@
         <div class="panel-head">
           <h2 onclick="togglePanel('panel-habitos')" style="flex:1">Hábitos</h2>
           <div class="panel-head-actions">
-            <span class="badge" id="habitos-badge">—</span>
+            <span class="badge" id="habitos-badge"></span>
             <button class="minimize-btn" id="min-panel-habitos" onclick="togglePanel('panel-habitos')" tabindex="-1">−</button>
           </div>
         </div>
@@ -556,7 +557,7 @@
         <div class="panel-head">
           <h2 onclick="togglePanel('panel-skills')" style="flex:1">Comandos</h2>
           <div class="panel-head-actions">
-            <span class="badge" id="skills-badge">—</span>
+            <span class="badge" id="skills-badge"></span>
             <button class="minimize-btn" id="min-panel-skills" onclick="togglePanel('panel-skills')" tabindex="-1">−</button>
           </div>
         </div>
@@ -629,7 +630,7 @@
         <div class="panel-head">
           <h2 onclick="togglePanel('panel-agenda')" style="flex:1">Agenda de hoy</h2>
           <div class="panel-head-actions">
-            <span class="badge" id="agenda-badge">—</span>
+            <span class="badge" id="agenda-badge"></span>
             <button class="minimize-btn" id="min-panel-agenda" onclick="togglePanel('panel-agenda')" tabindex="-1">−</button>
           </div>
         </div>
@@ -642,7 +643,7 @@
         <div class="panel-head">
           <h2 onclick="togglePanel('panel-feed')" style="flex:1">Recordatorios &amp; inbox</h2>
           <div class="panel-head-actions">
-            <span class="badge" id="feed-badge">—</span>
+            <span class="badge" id="feed-badge"></span>
             <button class="minimize-btn" id="min-panel-feed" onclick="togglePanel('panel-feed')" tabindex="-1">−</button>
           </div>
         </div>
@@ -748,7 +749,7 @@ async function renderHabitos(){
 
   if(!dates.length){
     body.innerHTML = '<div class="empty">sin habitos.md</div>';
-    badge.textContent = '—'; badge.className = 'badge alert';
+    badge.textContent = ''; badge.className = 'badge';
     panel.className = 'panel alert'; return;
   }
 
@@ -804,7 +805,7 @@ async function renderAgenda(){
 
   if(!text){
     body.innerHTML = '<div class="empty">sin plan.md — corre "plan"</div>';
-    badge.textContent='—'; badge.className='badge';
+    badge.textContent=''; badge.className='badge';
     panel.className='panel'; return;
   }
 
@@ -912,7 +913,7 @@ async function renderFeed(){
 
   if(!items.length){
     body.innerHTML = '<div class="empty">sin recordatorios</div>';
-    badge.textContent='—'; badge.className='badge'; return;
+    badge.textContent=''; badge.className='badge'; return;
   }
 
   items.sort((a,b) => `${b.date}T${b.time||'00:00'}`.localeCompare(`${a.date}T${a.time||'00:00'}`));
