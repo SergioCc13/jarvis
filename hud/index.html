@@ -74,65 +74,44 @@
     margin-right:auto;
   }
   .brand span{ color:var(--text-dim); font-weight:400; letter-spacing:1px; margin-left:6px; }
-  .topbar-devices{ display:flex; align-items:center; gap:10px; }
-  .device-chip{
-    display:flex; align-items:center; gap:5px;
-    font-family:var(--mono); font-size:10px; color:var(--text-dim);
-    letter-spacing:0.5px;
-  }
-  .device-dot{
-    width:6px; height:6px; border-radius:50%;
-    background:var(--text-dim); transition: background .4s, box-shadow .4s;
-  }
-  .device-dot.online{ background:var(--ok); box-shadow:0 0 5px var(--ok); }
-  .device-dot.warn{ background:var(--warn); box-shadow:0 0 5px var(--warn); }
-  .topbar-sep{ width:1px; height:16px; background:var(--border); }
-  .topbar-link{
-    font-family:var(--mono); font-size:11px; letter-spacing:1px;
-    color:var(--accent); text-decoration:none; opacity:.7;
-    transition: opacity .2s;
-  }
-  .topbar-link:hover{ opacity:1; }
   .clock{ font-family:var(--mono); font-size:14px; letter-spacing:1px; color:var(--text); }
 
-  /* ── dashboard grid — named areas for easy responsive swap ─────── */
+  /* ── dashboard: 3 columnas; las laterales son contenedores flex ──── */
   .dashboard{
     display:grid;
-    grid-template-areas:
-      "habits  center  agenda"
-      "skills  center  feed";
-    grid-template-columns: 250px 1fr 250px;
-    grid-template-rows: 1fr 1fr;
+    grid-template-columns: 250px minmax(0,1fr) 250px;
+    grid-template-rows: minmax(0,1fr);
     gap: var(--gap);
     min-height:0;
   }
-  #panel-habitos{ grid-area: habits; }
-  .col-center   { grid-area: center; }
-  #panel-agenda { grid-area: agenda; }
-  #panel-skills { grid-area: skills; }
-  #panel-feed   { grid-area: feed;   }
-
-  .col-center{
+  .col-side, .col-center{
     display:flex; flex-direction:column; gap: var(--gap);
-    min-height:0;
+    min-height:0; min-width:0;
   }
+  /* cada panel de una columna lateral se reparte el alto; al minimizar,
+     colapsa a su cabecera y el hermano ocupa el resto */
+  .col-side > .panel{ flex:1 1 0; min-height:66px; }
+  .col-side > .panel.minimized{ flex:0 0 auto; min-height:0; }
 
-  /* ── medium: tablet / small laptop (640–1023px) ─────────────────
-     panels pair up top and bottom; orb spans full width in middle  */
+  /* ── medium: tablet / small laptop (640–1023px) ───────────────── */
   @media (max-width:1023px){
     .dashboard{
-      grid-template-areas:
-        "habits  agenda"
-        "center  center"
-        "skills  feed";
       grid-template-columns: 1fr 1fr;
-      grid-template-rows: auto 1fr auto;
+      grid-template-areas:
+        "left   right"
+        "center center";
+      grid-template-rows: minmax(0,auto) minmax(0,1fr);
     }
+    .col-left  { grid-area:left;  }
+    .col-right { grid-area:right; }
+    .col-center{ grid-area:center; }
+    .col-side{ flex-direction:row; }
+    .col-side > .panel{ flex:1 1 0; }
+    .col-side > .panel.minimized{ flex:0 1 auto; }
     .orb-panel{ min-height: 200px; }
   }
 
-  /* ── portrait / phone (< 640px) ─────────────────────────────────
-     panels 2×2 at top, then orb+chat below, all scrollable        */
+  /* ── portrait / phone (< 640px) ───────────────────────────────── */
   @media (max-width:639px){
     html,body{ overflow:auto; height:auto; }
     .app{
@@ -143,29 +122,26 @@
     }
     --gap: 6px; --radius: 12px;
     .dashboard{
-      grid-template-areas:
-        "habits  agenda"
-        "skills  feed"
-        "center  center";
       grid-template-columns: 1fr 1fr;
-      grid-template-rows: auto auto 1fr;
+      grid-template-areas:
+        "left   right"
+        "center center";
+      grid-template-rows: auto minmax(0,1fr);
       overflow:visible;
     }
+    .col-side{ flex-direction:column; }
     .orb-panel{ min-height:160px; max-height:220px; }
     /* compact topbar */
     .topbar{ padding:6px 10px; gap:10px; }
     .brand{ font-size:12px; letter-spacing:3px; }
     .brand span{ display:none; }
     .clock{ font-size:12px; }
-    .topbar-sep{ display:none; }
     /* compact panels */
-    .panel{ max-height:200px; }
+    .panel{ max-height:220px; }
+    .col-side > .panel{ max-height:none; }
     .panel-head h2{ font-size:9px; letter-spacing:1.5px; }
     /* compact bottombar */
-    .bottombar{ padding:5px 10px; gap:8px; flex-wrap:wrap; }
-    .bottombar-label{ display:none; }
-    .dev-item .dev-ts{ display:none; }
-    .dev-item{ font-size:9px; }
+    .bottombar{ padding:6px 12px; gap:12px; flex-wrap:wrap; }
     /* audio strip stacked */
     .audio-strip{ grid-template-columns:1fr; gap:4px; padding:8px 12px; }
     .audio-col:last-child{ text-align:left; }
@@ -185,7 +161,7 @@
   .panel.active{ border-color:var(--border-soft); box-shadow:var(--shadow-sm), inset 0 0 0 1px rgba(124,195,161,.10); }
   /* estado "alert" (p. ej. sin habitos.md): sin borde de color — solo la badge lo indica */
   .panel.alert{ border-color:var(--border-soft); box-shadow:var(--shadow-sm); }
-  .panel.minimized{ flex:0 0 auto !important; }
+  .panel.minimized{ padding-top:10px; padding-bottom:10px; }
   .panel.minimized .panel-body{ display:none; }
   .panel.minimized .panel-head{ border-bottom:none; margin-bottom:0; padding-bottom:0; }
   .panel-head{
@@ -484,9 +460,9 @@
   }
   .feed-item .txt{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--text-dim); }
 
-  /* ── devices panel (bottom bar) ──────────────────────────────────── */
+  /* ── status bar (bottom) ────────────────────────────────────────── */
   .bottombar{
-    display:flex; align-items:center; gap:14px;
+    display:flex; align-items:center; gap:22px;
     padding:9px 18px;
     background: linear-gradient(180deg, var(--panel-hi), var(--panel-bg));
     border:1px solid var(--border-soft); border-radius:var(--radius);
@@ -494,24 +470,22 @@
     flex-shrink:0;
     transition: opacity .28s ease, transform .28s ease;
   }
-  .bottombar-label{ font-family:var(--mono); font-size:9px; color:var(--text-dim); letter-spacing:1.5px; text-transform:uppercase; flex-shrink:0; }
-  .devices-list{ display:flex; gap:10px; flex:1; }
-  .dev-item{
-    display:flex; align-items:center; gap:6px;
-    font-family:var(--mono); font-size:10px; color:var(--text-dim);
+  .status-item{
+    display:flex; align-items:center; gap:7px;
+    font-family:var(--mono); font-size:10px; letter-spacing:1px;
+    text-transform:uppercase; color:var(--text-dim);
   }
-  .dev-item .dev-dot{
+  .status-item .st-dot{
     width:7px; height:7px; border-radius:50%;
-    background:var(--border); flex-shrink:0;
+    background:var(--text-dim); flex-shrink:0;
     transition: background .4s, box-shadow .4s;
   }
-  .dev-item.online .dev-dot{ background:var(--ok); box-shadow:0 0 5px var(--ok); }
-  .dev-item.online{ color:var(--text); }
-  .dev-item .dev-name{ text-transform:uppercase; letter-spacing:.5px; }
-  .dev-item .dev-ts{ color:var(--text-dim); font-size:9px; }
-  .vault-status{ font-family:var(--mono); font-size:10px; margin-left:auto; display:flex; align-items:center; gap:5px; }
-  .vault-dot{ width:6px; height:6px; border-radius:50%; background:var(--text-dim); }
-  .vault-dot.ok{ background:var(--ok); box-shadow:0 0 5px var(--ok); }
+  .status-item.ok   { color:var(--text); }
+  .status-item.ok   .st-dot{ background:var(--ok);   box-shadow:0 0 6px var(--ok); }
+  .status-item.warn { color:var(--warn); }
+  .status-item.warn .st-dot{ background:var(--warn); box-shadow:0 0 6px var(--warn); }
+  .status-item.down .st-dot{ background:var(--bad);  box-shadow:0 0 6px var(--bad); }
+  .status-item .st-detail{ color:var(--text-dim); text-transform:none; letter-spacing:0; }
 
   /* ── modo foco: al escribir, solo quedan el orbe y el chat ──────── */
   .app{ transition: gap .28s ease; }
@@ -525,10 +499,8 @@
   body.focus-mode #focus-toggle{ border-color:var(--accent); color:var(--accent); }
   body.focus-mode .topbar,
   body.focus-mode .bottombar,
-  body.focus-mode #panel-habitos,
-  body.focus-mode #panel-skills,
-  body.focus-mode #panel-agenda,
-  body.focus-mode #panel-feed,
+  body.focus-mode .col-left,
+  body.focus-mode .col-right,
   body.focus-mode .brief-strip,
   body.focus-mode .audio-strip{ display:none; }
   body.focus-mode .dashboard{
@@ -536,6 +508,7 @@
     grid-template-columns:1fr;
     grid-template-rows:1fr;
   }
+  body.focus-mode .col-center{ grid-area:center; }
   body.focus-mode .orb-panel{ flex:0 0 92px; min-height:92px; max-height:92px; }
   body.focus-mode #core-canvas{ transform:scale(.46); }
   body.focus-mode .chat-panel{
@@ -558,41 +531,40 @@
   <!-- ── topbar ── -->
   <div class="topbar">
     <div class="brand">JARVIS<span>OS · HUD</span></div>
-    <a class="topbar-link" href="chat.html" id="chat-link">CHAT</a>
-    <a class="topbar-link" href="voice.html" id="voice-link">VOZ</a>
-    <div class="topbar-sep"></div>
-    <span class="clock" id="clock">--:--:--</span>
+    <span class="clock" id="clock" style="margin-left:auto">--:--:--</span>
   </div>
 
   <!-- ── 3-column dashboard ── -->
   <div class="dashboard">
 
-    <!-- left col: hábitos + skills -->
-    <section class="panel" id="panel-habitos">
-      <div class="panel-head">
-        <h2 onclick="togglePanel('panel-habitos')" style="flex:1">Hábitos</h2>
-        <div class="panel-head-actions">
-          <span class="badge" id="habitos-badge">—</span>
-          <button class="minimize-btn" id="min-panel-habitos" onclick="togglePanel('panel-habitos')" tabindex="-1">−</button>
+    <!-- left col: hábitos + comandos -->
+    <div class="col-side col-left">
+      <section class="panel" id="panel-habitos">
+        <div class="panel-head">
+          <h2 onclick="togglePanel('panel-habitos')" style="flex:1">Hábitos</h2>
+          <div class="panel-head-actions">
+            <span class="badge" id="habitos-badge">—</span>
+            <button class="minimize-btn" id="min-panel-habitos" onclick="togglePanel('panel-habitos')" tabindex="-1">−</button>
+          </div>
         </div>
-      </div>
-      <div class="panel-body" id="habitos-body">
-        <div class="empty">cargando…</div>
-      </div>
-    </section>
+        <div class="panel-body" id="habitos-body">
+          <div class="empty">cargando…</div>
+        </div>
+      </section>
 
-    <section class="panel" id="panel-skills">
-      <div class="panel-head">
-        <h2 onclick="togglePanel('panel-skills')" style="flex:1">Comandos</h2>
-        <div class="panel-head-actions">
-          <span class="badge" id="skills-badge">—</span>
-          <button class="minimize-btn" id="min-panel-skills" onclick="togglePanel('panel-skills')" tabindex="-1">−</button>
+      <section class="panel" id="panel-skills">
+        <div class="panel-head">
+          <h2 onclick="togglePanel('panel-skills')" style="flex:1">Comandos</h2>
+          <div class="panel-head-actions">
+            <span class="badge" id="skills-badge">—</span>
+            <button class="minimize-btn" id="min-panel-skills" onclick="togglePanel('panel-skills')" tabindex="-1">−</button>
+          </div>
         </div>
-      </div>
-      <div class="panel-body" id="skills-body">
-        <div class="empty">cargando…</div>
-      </div>
-    </section>
+        <div class="panel-body" id="skills-body">
+          <div class="empty">cargando…</div>
+        </div>
+      </section>
+    </div>
 
     <!-- center col: orb + audio -->
     <div class="col-center">
@@ -652,59 +624,41 @@
     </div>
 
     <!-- right col: agenda + feed -->
-    <section class="panel" id="panel-agenda">
-      <div class="panel-head">
-        <h2 onclick="togglePanel('panel-agenda')" style="flex:1">Agenda de hoy</h2>
-        <div class="panel-head-actions">
-          <span class="badge" id="agenda-badge">—</span>
-          <button class="minimize-btn" id="min-panel-agenda" onclick="togglePanel('panel-agenda')" tabindex="-1">−</button>
+    <div class="col-side col-right">
+      <section class="panel" id="panel-agenda">
+        <div class="panel-head">
+          <h2 onclick="togglePanel('panel-agenda')" style="flex:1">Agenda de hoy</h2>
+          <div class="panel-head-actions">
+            <span class="badge" id="agenda-badge">—</span>
+            <button class="minimize-btn" id="min-panel-agenda" onclick="togglePanel('panel-agenda')" tabindex="-1">−</button>
+          </div>
         </div>
-      </div>
-      <div class="panel-body" id="agenda-body">
-        <div class="empty">cargando…</div>
-      </div>
-    </section>
+        <div class="panel-body" id="agenda-body">
+          <div class="empty">cargando…</div>
+        </div>
+      </section>
 
-    <section class="panel" id="panel-feed">
-      <div class="panel-head">
-        <h2 onclick="togglePanel('panel-feed')" style="flex:1">Recordatorios &amp; inbox</h2>
-        <div class="panel-head-actions">
-          <span class="badge" id="feed-badge">—</span>
-          <button class="minimize-btn" id="min-panel-feed" onclick="togglePanel('panel-feed')" tabindex="-1">−</button>
+      <section class="panel" id="panel-feed">
+        <div class="panel-head">
+          <h2 onclick="togglePanel('panel-feed')" style="flex:1">Recordatorios &amp; inbox</h2>
+          <div class="panel-head-actions">
+            <span class="badge" id="feed-badge">—</span>
+            <button class="minimize-btn" id="min-panel-feed" onclick="togglePanel('panel-feed')" tabindex="-1">−</button>
+          </div>
         </div>
-      </div>
-      <div class="panel-body" id="feed-body">
-        <div class="empty">cargando…</div>
-      </div>
-    </section>
+        <div class="panel-body" id="feed-body">
+          <div class="empty">cargando…</div>
+        </div>
+      </section>
+    </div>
 
   </div>
 
-  <!-- ── bottombar: device status ── -->
+  <!-- ── status bar ── -->
   <div class="bottombar">
-    <span class="bottombar-label">Dispositivos</span>
-    <div class="devices-list" id="devices-list">
-      <div class="dev-item" id="dev-pi">
-        <span class="dev-dot"></span>
-        <span class="dev-name">Pi</span>
-      </div>
-      <div class="dev-item" id="dev-pc">
-        <span class="dev-dot"></span>
-        <span class="dev-name">PC</span>
-      </div>
-      <div class="dev-item" id="dev-mac">
-        <span class="dev-dot"></span>
-        <span class="dev-name">Mac</span>
-      </div>
-      <div class="dev-item" id="dev-tlf">
-        <span class="dev-dot"></span>
-        <span class="dev-name">Teléfono</span>
-      </div>
-    </div>
-    <div class="vault-status">
-      <span class="vault-dot" id="vault-dot"></span>
-      <span id="vault-label" style="font-size:10px;font-family:var(--mono);color:var(--text-dim);">vault</span>
-    </div>
+    <div class="status-item" id="st-bridge"><span class="st-dot"></span><span>Bridge</span></div>
+    <div class="status-item" id="st-backend"><span class="st-dot"></span><span id="st-backend-name">Claude</span></div>
+    <div class="status-item" id="st-vault"><span class="st-dot"></span><span>Vault</span></div>
   </div>
 
 </div>
@@ -1000,54 +954,38 @@ async function renderBrief(){
   strip.classList.toggle('loaded', hasBody);
 }
 
-/* ── device status (bottombar) ──────────────────────────────────────── */
+/* ── status bar: bridge / backend / vault ───────────────────────────── */
 
-async function renderDevices(){
-  const text = await fetchText('../bridge/devices.json');
-  if(!text) return;
-  let devices;
-  try{ devices = JSON.parse(text); } catch(e){ return; }
-
-  const now = Date.now();
-  const KNOWN = {
-    pi: null, pc: null, mac: null, tlf: null
-  };
-
-  Object.values(devices).forEach(d => {
-    const name = (d.name||'').toLowerCase();
-    const lastMs = d.last_seen ? new Date(d.last_seen).getTime() : 0;
-    const online = (now - lastMs) < ONLINE_THRESHOLD_MS;
-    const entry = { name:d.name, platform:d.platform, online, lastMs };
-    if(name.includes('pi') || d.platform==='linux') KNOWN.pi = entry;
-    else if(name.includes('mac') || d.platform==='darwin') KNOWN.mac = entry;
-    else if(name.includes('pc') || name.includes('windows') || name.includes('pc')) KNOWN.pc = entry;
-    else if(name.includes('tlf') || name.includes('phone') || name.includes('movil')) KNOWN.tlf = entry;
-  });
-
-  ['pi','pc','mac','tlf'].forEach(key => {
-    const el = document.getElementById('dev-'+key);
-    if(!el) return;
-    const d = KNOWN[key];
-    if(d){
-      el.classList.toggle('online', d.online);
-      const tsEl = el.querySelector('.dev-ts');
-      if(!tsEl){
-        const span = document.createElement('span');
-        span.className = 'dev-ts';
-        el.appendChild(span);
-      }
-      const mins = d.lastMs ? Math.floor((Date.now()-d.lastMs)/60000) : null;
-      el.querySelector('.dev-ts').textContent = mins !== null ? `${mins}m` : '';
-    }
-  });
+function setStatus(id, cls, detail){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.classList.remove('ok','warn','down');
+  if(cls) el.classList.add(cls);
+  let d = el.querySelector('.st-detail');
+  if(detail){
+    if(!d){ d = document.createElement('span'); d.className = 'st-detail'; el.appendChild(d); }
+    d.textContent = detail;
+  } else if(d){ d.remove(); }
 }
 
-/* ── vault status ───────────────────────────────────────────────────── */
+// backend: por defecto Claude; el SSE de /events avisa cuando cae a Ollama
+function setBackend(name, cls){
+  const n = document.getElementById('st-backend-name');
+  if(n) n.textContent = name;
+  setStatus('st-backend', cls);
+}
+setBackend('Claude', 'ok');
+
+async function checkBridge(){
+  try{
+    const r = await fetch(`${BRIDGE_URL}/version`, {cache:'no-store'});
+    setStatus('st-bridge', r.ok ? 'ok' : 'down');
+  }catch(_){ setStatus('st-bridge', 'down'); }
+}
 
 async function updateVaultStatus(){
   const ok = (await fetchText(VAULT)) !== null;
-  document.getElementById('vault-dot').className = 'vault-dot' + (ok?' ok':'');
-  document.getElementById('vault-label').textContent = ok ? 'vault ●' : 'vault sin conexión';
+  setStatus('st-vault', ok ? 'ok' : 'down');
 }
 
 /* ── audio / orb ────────────────────────────────────────────────────── */
@@ -1263,17 +1201,9 @@ function initBackground(){
   requestAnimationFrame(frame);
 }
 
-/* ── clock + links ──────────────────────────────────────────────────── */
+/* ── clock ──────────────────────────────────────────────────────────── */
 
 function tickClock(){ document.getElementById('clock').textContent=timeStr(); }
-
-function initLinks(){
-  const saved=localStorage.getItem('jarvis_token');
-  if(saved){
-    document.getElementById('chat-link').href='chat.html?token='+encodeURIComponent(saved);
-    document.getElementById('voice-link').href='voice.html?token='+encodeURIComponent(saved);
-  }
-}
 
 /* ── panel minimize ─────────────────────────────────────────────────── */
 
@@ -1631,6 +1561,7 @@ function initChat(){
   async function check(){
     try{
       const r = await fetch(`${BRIDGE_URL}/version`, {cache:'no-store'});
+      setStatus('st-bridge', r.ok ? 'ok' : 'down');
       if(!r.ok) return;
       const {hash} = await r.json();
       if(!known){ known = hash; return; }
@@ -1638,7 +1569,7 @@ function initChat(){
         console.log('[jarvis] new version detected, reloading…');
         location.reload();
       }
-    }catch(_){}
+    }catch(_){ setStatus('st-bridge', 'down'); }
   }
   setInterval(check, 60_000);
   check();
@@ -1653,7 +1584,11 @@ function initEvents(){
   src.onmessage = e => {
     try {
       const d = JSON.parse(e.data);
-      if(d.type === 'notice') _addMsg('jarvis', d.text);
+      if(d.type === 'notice'){
+        _addMsg('jarvis', d.text);
+        if(/ollama/i.test(d.text)) setBackend('Ollama', 'warn');
+        else if(/claude disponible/i.test(d.text)) setBackend('Claude', 'ok');
+      }
     } catch(_){}
   };
   src.onerror = () => { src.close(); setTimeout(initEvents, 5000); };
@@ -1666,7 +1601,6 @@ async function refreshAll(){
 }
 
 tickClock();
-initLinks();
 initCore();
 initBackground();
 restorePanels();
@@ -1676,10 +1610,10 @@ initClapDetect();
 setInterval(tickClock, 1000);
 refreshAll();
 renderAudio();
-renderDevices();
+checkBridge();
 setInterval(refreshAll, REFRESH_MS);
 setInterval(renderAudio, AUDIO_REFRESH_MS);
-setInterval(renderDevices, DEVICES_REFRESH_MS);
+setInterval(checkBridge, DEVICES_REFRESH_MS);
 </script>
 </body>
 </html>
