@@ -495,20 +495,12 @@
   .app{ transition: gap .28s ease; }
   body.focus-mode .app{ grid-template-rows: 1fr; }
 
-  #focus-exit{
-    position:fixed; top:14px; right:16px; z-index:50;
-    display:none; align-items:center; gap:7px;
-    padding:7px 13px 7px 10px; border-radius:999px;
-    background: linear-gradient(180deg, var(--panel-hi), var(--panel-bg));
-    border:1px solid var(--border-soft); box-shadow:var(--shadow);
-    color:var(--text-dim); font-family:var(--mono); font-size:10px;
-    letter-spacing:1.5px; text-transform:uppercase; cursor:pointer;
-    transition: color .2s, border-color .2s, transform .2s;
-  }
-  #focus-exit svg{ width:15px; height:15px; }
-  #focus-exit:hover{ color:var(--accent); border-color:var(--accent); transform:translateY(-1px); }
-  body.focus-mode #focus-exit{ display:flex; }
-  @media (max-width:639px){ #focus-exit span{ display:none; } #focus-exit{ padding:9px; } }
+  /* botón de la barra del chat: agranda / reduce el modo escritura (el mismo icono cambia) */
+  #focus-toggle svg{ width:17px; height:17px; display:block; }
+  #focus-toggle .ico-shrink{ display:none; }
+  body.focus-mode #focus-toggle .ico-grow{ display:none; }
+  body.focus-mode #focus-toggle .ico-shrink{ display:block; }
+  body.focus-mode #focus-toggle{ border-color:var(--accent); color:var(--accent); }
   body.focus-mode .topbar,
   body.focus-mode .bottombar,
   body.focus-mode #panel-habitos,
@@ -538,13 +530,6 @@
 <body>
 
 <canvas id="bg-canvas"></canvas>
-
-<button id="focus-exit" type="button" title="Salir del modo escritura (Esc)" aria-label="Salir del modo escritura">
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M9 4H5a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h4M16 17l5-5-5-5M21 12H9"/>
-  </svg>
-  <span>Salir</span>
-</button>
 
 <div class="app">
 
@@ -622,6 +607,14 @@
               <path d="M12 4v3.5M10.4 8.2 12 10l1.6-1.8"/>
             </svg>
             <span class="clap-status" id="clap-status" aria-hidden="true"></span>
+          </button>
+          <button class="chat-action-btn" id="focus-toggle" type="button" title="Agrandar / reducir el chat (Esc)" aria-label="Agrandar o reducir el chat">
+            <svg class="ico-grow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/>
+            </svg>
+            <svg class="ico-shrink" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M3 8h5V3M21 8h-5V3M3 16h5v5M21 16h-5v5"/>
+            </svg>
           </button>
         </div>
       </div>
@@ -1130,56 +1123,62 @@ function initCore(){
     ctx.clearRect(0,0,cssSize,cssSize);
     const bri=coreCurrent.brightness*(0.85+(coreTargetState==='speaking'?Math.sin(breatheT*8)*.15:0));
 
-    // halo exterior — más intenso
+    // halo exterior
     const halo=ctx.createRadialGradient(ox,oy,0,ox,oy,baseR*1.9);
-    halo.addColorStop(0,rgba(Math.min((.20+Math.sin(breatheT*.5)*.05)*bri,1)));
-    halo.addColorStop(.5,rgba(Math.min(.06*bri,1)));
+    halo.addColorStop(0,rgba(Math.min((.18+Math.sin(breatheT*.5)*.045)*bri,1)));
+    halo.addColorStop(.5,rgba(Math.min(.05*bri,1)));
     halo.addColorStop(1,rgba(0));
     ctx.fillStyle=halo; ctx.beginPath(); ctx.arc(ox,oy,baseR*1.9,0,Math.PI*2); ctx.fill();
 
-    // contorno del blob
-    ctx.beginPath();
+    // contorno del blob (Path2D reutilizable — el clip/stroke posterior no lo pierde)
+    const blob=new Path2D();
     const last=points[points.length-1], first=points[0];
-    let pm={x:(last.x+first.x)/2,y:(last.y+first.y)/2};
-    ctx.moveTo(pm.x,pm.y);
+    const pm={x:(last.x+first.x)/2,y:(last.y+first.y)/2};
+    blob.moveTo(pm.x,pm.y);
     for(let i=0;i<points.length;i++){
       const cur=points[i], next=points[(i+1)%points.length];
-      const mid={x:(cur.x+next.x)/2,y:(cur.y+next.y)/2};
-      ctx.quadraticCurveTo(cur.x,cur.y,mid.x,mid.y);
+      blob.quadraticCurveTo(cur.x,cur.y,(cur.x+next.x)/2,(cur.y+next.y)/2);
     }
-    ctx.closePath();
+    blob.closePath();
 
-    // relleno con glow
-    const grad=ctx.createRadialGradient(ox,oy,0,ox,oy,baseR*1.6);
-    grad.addColorStop(0,rgba(Math.min(bri*1.0,1)));
-    grad.addColorStop(.55,rgba(Math.min(bri*.55,1)));
-    grad.addColorStop(1,rgba(0));
+    // cuerpo tipo cristal: centro translúcido, la luz se concentra hacia el borde
+    const body=ctx.createRadialGradient(ox,oy,0,ox,oy,baseR*1.05);
+    body.addColorStop(0,    rgba(Math.min(bri*.26,1)));
+    body.addColorStop(0.62, rgba(Math.min(bri*.42,1)));
+    body.addColorStop(0.90, rgba(Math.min(bri*.85,1)));
+    body.addColorStop(1,    rgba(Math.min(bri*.34,1)));
     ctx.save();
-    ctx.fillStyle=grad; ctx.shadowColor=rgba(Math.min(bri,1)); ctx.shadowBlur=coreCurrent.glowR*baseR;
-    ctx.fill();
+    ctx.shadowColor=rgba(Math.min(bri,1)); ctx.shadowBlur=coreCurrent.glowR*baseR;
+    ctx.fillStyle=body; ctx.fill(blob);
     ctx.restore();
 
-    // capa aditiva: núcleo brillante + brillo especular "cristal"
+    // sombra interior abajo-derecha → volumen de esfera de vidrio
     ctx.save();
-    ctx.clip();
+    ctx.clip(blob);
+    const vol=ctx.createRadialGradient(ox+baseR*.42,oy+baseR*.46,baseR*.1,ox+baseR*.42,oy+baseR*.46,baseR*1.5);
+    vol.addColorStop(0,'rgba(0,0,0,0.26)');
+    vol.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=vol; ctx.fillRect(ox-baseR*1.6,oy-baseR*1.6,baseR*3.2,baseR*3.2);
+    ctx.restore();
+
+    // rim nítido del cristal
+    ctx.strokeStyle=rgba(Math.min(bri*.95,1)); ctx.lineWidth=1.3; ctx.stroke(blob);
+
+    // sheen: dos arcos curvos pegados al borde superior-izquierdo (reflejo de vidrio, no un disco)
+    ctx.save();
+    ctx.clip(blob);
     ctx.globalCompositeOperation='lighter';
-    const cg=ctx.createRadialGradient(ox,oy,0,ox,oy,baseR*1.15);
-    cg.addColorStop(0,rgba(Math.min(bri*.55,1)));
-    cg.addColorStop(1,rgba(0));
-    ctx.fillStyle=cg; ctx.beginPath(); ctx.arc(ox,oy,baseR*1.15,0,Math.PI*2); ctx.fill();
-    const hx=ox-baseR*.34, hy=oy-baseR*.42;
-    const spec=ctx.createRadialGradient(hx,hy,0,hx,hy,baseR*.85);
-    spec.addColorStop(0,`rgba(255,255,255,${Math.min(.30*bri,.42)})`);
-    spec.addColorStop(1,'rgba(255,255,255,0)');
-    ctx.fillStyle=spec; ctx.beginPath(); ctx.arc(hx,hy,baseR*.85,0,Math.PI*2); ctx.fill();
-    ctx.restore();
-
-    // borde + rim de luz interior
-    ctx.strokeStyle=rgba(Math.min(bri*.9,1)); ctx.lineWidth=1.2; ctx.stroke();
-    ctx.save();
-    ctx.clip();
-    ctx.strokeStyle=`rgba(255,255,255,${Math.min(.22*bri,.34)})`;
-    ctx.lineWidth=2.5; ctx.stroke();
+    ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.arc(ox,oy,baseR*0.9,Math.PI*1.05,Math.PI*1.55);
+    ctx.strokeStyle=`rgba(255,255,255,${Math.min(.34*bri,.44)})`;
+    ctx.lineWidth=baseR*0.09;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(ox,oy,baseR*0.78,Math.PI*1.16,Math.PI*1.35);
+    ctx.strokeStyle=`rgba(255,255,255,${Math.min(.22*bri,.3)})`;
+    ctx.lineWidth=baseR*0.045;
+    ctx.stroke();
     ctx.restore();
 
     requestAnimationFrame(frame);
@@ -1498,8 +1497,11 @@ function initChat(){
       if(!chatPanel.contains(document.activeElement)) exitFocus();
     }, 120);
   });
-  const focusExitBtn = document.getElementById('focus-exit');
-  if(focusExitBtn) focusExitBtn.addEventListener('click', ()=>{ input.blur(); exitFocus(); });
+  const focusToggle = document.getElementById('focus-toggle');
+  if(focusToggle) focusToggle.addEventListener('click', ()=>{
+    if(document.body.classList.contains('focus-mode')){ input.blur(); exitFocus(); }
+    else { enterFocus(); input.focus(); }
+  });
 
   input.addEventListener('input', () => autoGrow(input));
   input.addEventListener('keydown', e=>{
