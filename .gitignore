@@ -20,6 +20,11 @@ bridge/.env
 # Personal machine-specific symlink to voicemode's local event log
 hud/voicemode-logs
 
+# HUD token injected per device by bridge/server.py, + runtime state / uploads
+hud/jarvis-config.js
+bridge/watchdog_state.json
+bridge/hud_media/
+
 # Personal vault content (habits, plans, reminders, notes) — keep the folders, not the data
 vault/outputs/*
 !vault/outputs/.gitkeep

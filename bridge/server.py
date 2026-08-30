@@ -13,6 +13,7 @@ import queue
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -119,6 +120,15 @@ def save_config(cfg):
 
 
 CONFIG = load_config()
+
+# ── fotos desde el HUD (POST /chat/image) ────────────────────────────────────
+# Varias imágenes = un mensaje: el cliente sube una por request compartiendo
+# ?batch_id= y el análisis solo se dispara al llegar la ?total=.
+HUD_MEDIA_DIR = os.path.join(BRIDGE_DIR, "hud_media")
+_image_batches = {}                 # batch_id -> {"paths": [...], "text": str}
+_image_batch_lock = threading.Lock()
+_IMG_EXT = {"image/png": ".png", "image/webp": ".webp", "image/gif": ".gif",
+            "image/heic": ".heic", "image/jpeg": ".jpg", "image/jpg": ".jpg"}
 
 # Write token to HUD so the dashboard can connect without manual token entry
 def _write_hud_config():
@@ -362,6 +372,62 @@ class Handler(BaseHTTPRequestHandler):
 
         return self._send_json(200, {"reply": reply})
 
+    def _handle_chat_image(self):
+        # Bytes crudos de imagen en el body, caption en ?text=. Multi-imagen:
+        # el cliente sube una por request con ?batch_id= y ?total=; el bridge
+        # las guarda en bridge/hud_media/ y, cuando llegan todas, se las pasa a
+        # Claude (que las abre con su herramienta de lectura de archivos).
+        qs = self.path.split("?", 1)[1] if "?" in self.path else ""
+        params = urllib.parse.parse_qs(qs)
+        token = (params.get("token") or [""])[0]
+        if token != CONFIG["token"]:
+            return self._send_json(401, {"error": "unauthorized"})
+
+        text = (params.get("text") or [""])[0].strip()
+        batch_id = (params.get("batch_id") or [""])[0] or uuid.uuid4().hex
+        try:
+            total = max(1, int((params.get("total") or ["1"])[0]))
+        except ValueError:
+            total = 1
+
+        length = int(self.headers.get("Content-Length", 0))
+        if length <= 0:
+            return self._send_json(400, {"error": "empty image"})
+        image_bytes = self.rfile.read(length)
+        ct = self.headers.get("Content-Type", "image/jpeg").split(";")[0].strip().lower()
+        ext = _IMG_EXT.get(ct, ".jpg")
+
+        os.makedirs(HUD_MEDIA_DIR, exist_ok=True)
+        image_path = os.path.join(HUD_MEDIA_DIR, f"{uuid.uuid4().hex}{ext}")
+        with open(image_path, "wb") as f:
+            f.write(image_bytes)
+
+        with _image_batch_lock:
+            batch = _image_batches.setdefault(batch_id, {"paths": [], "text": ""})
+            batch["paths"].append(image_path)
+            if text:
+                batch["text"] = text
+            if len(batch["paths"]) < total:
+                return self._send_json(200, {"status": "staged",
+                                             "received": len(batch["paths"]), "total": total})
+            paths = batch["paths"]
+            caption = batch["text"]
+            _image_batches.pop(batch_id, None)
+
+        images_block = "\n".join(f"[Imagen adjunta en: {p}]" for p in paths)
+        n = len(paths)
+        prompt = (
+            f"El usuario ha adjuntado {n} imagen{'es' if n != 1 else ''} desde el HUD. "
+            "Ábrelas con tu herramienta de lectura de archivos y respóndele en español.\n\n"
+            + (f"Mensaje del usuario: {caption}\n\n" if caption else "")
+            + images_block
+        )
+        try:
+            reply = ask(prompt)
+        except Exception as e:
+            return self._send_json(502, {"error": f"claude failed: {e}"})
+        return self._send_json(200, {"reply": reply, "images": n})
+
     def _handle_events(self):
         qs = self.path.split("?", 1)[1] if "?" in self.path else ""
         token = urllib.parse.parse_qs(qs).get("token", [""])[0]
@@ -442,6 +508,8 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/chat":
             return self._handle_chat()
+        if path == "/chat/image":
+            return self._handle_chat_image()
         if path not in ("/", "/voice"):
             return self._send_text(404, "not found")
 

@@ -372,7 +372,29 @@
     background:var(--text-dim); transition: background .3s, box-shadow .3s;
   }
   .clap-status.detected{ background:var(--ok); box-shadow:0 0 7px var(--ok); }
-  .clap-status.detected{ color:var(--ok); }
+
+  /* ── adjuntar imágenes ──────────────────────────────────────────── */
+  .attach-preview{
+    flex-shrink:0; display:flex; flex-wrap:wrap; gap:7px;
+    padding:8px 12px 0;
+  }
+  .attach-chip{
+    position:relative; width:52px; height:52px; border-radius:9px;
+    overflow:hidden; border:1px solid var(--border-soft);
+    background:#0c1113 center/cover no-repeat;
+  }
+  .attach-chip button{
+    position:absolute; top:2px; right:2px; width:16px; height:16px;
+    border:none; border-radius:50%; cursor:pointer;
+    background:rgba(0,0,0,.6); color:#fff; font-size:11px; line-height:16px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .attach-chip button:hover{ background:var(--bad); }
+  .chat-msg-images{ display:flex; flex-wrap:wrap; gap:5px; }
+  .chat-msg-images img{
+    width:110px; height:110px; object-fit:cover;
+    border-radius:9px; border:1px solid var(--border-soft);
+  }
 
   /* ── morning brief strip ────────────────────────────────────────── */
   .brief-strip{
@@ -580,10 +602,12 @@
       </div>
       <div class="chat-panel" id="chat-panel">
         <div class="chat-messages" id="chat-messages">
-          <div class="chat-msg chat-msg-hint">Escribe, pulsa el micrófono, o da 2 palmadas para hablar</div>
+          <div class="chat-msg chat-msg-hint">Escribe, adjunta fotos, pulsa el micrófono, o da 2 palmadas para hablar</div>
         </div>
+        <div class="attach-preview" id="attach-preview" hidden></div>
         <div class="chat-input-row">
-          <button class="chat-action-btn" id="attach-btn" title="Adjuntar" aria-label="Adjuntar">
+          <input type="file" id="image-input" accept="image/*" multiple hidden>
+          <button class="chat-action-btn" id="attach-btn" title="Adjuntar imagen" aria-label="Adjuntar imagen">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 12.5l-8.5 8.5a4.5 4.5 0 0 1-6.36-6.36L14.5 6.28a3 3 0 0 1 4.24 4.24L10.4 18.86a1.5 1.5 0 0 1-2.12-2.12l7.6-7.6"/>
             </svg>
@@ -1325,6 +1349,74 @@ async function sendChat(text){
   _setChatState('idle');
 }
 
+/* ── adjuntar imágenes ─────────────────────────────────────────────── */
+let _stagedImages = [];  // [{file, url}]
+
+function _renderAttachPreview(){
+  const box = document.getElementById('attach-preview');
+  box.innerHTML = '';
+  if(!_stagedImages.length){ box.hidden = true; return; }
+  box.hidden = false;
+  _stagedImages.forEach((it, i) => {
+    const chip = document.createElement('div');
+    chip.className = 'attach-chip';
+    chip.style.backgroundImage = `url("${it.url}")`;
+    const x = document.createElement('button');
+    x.type = 'button'; x.textContent = '×'; x.title = 'Quitar';
+    x.addEventListener('click', () => { _stagedImages.splice(i,1); _renderAttachPreview(); });
+    chip.appendChild(x);
+    box.appendChild(chip);
+  });
+}
+
+function _stageImages(fileList){
+  for(const f of fileList){
+    if(!f.type.startsWith('image/')) continue;
+    if(_stagedImages.length >= 6) break;
+    _stagedImages.push({ file:f, url: URL.createObjectURL(f) });
+  }
+  _renderAttachPreview();
+}
+
+async function sendImages(caption){
+  const items = _stagedImages.slice();
+  if(!items.length) return;
+  _stagedImages = []; _renderAttachPreview();
+  const batchId = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random())
+    .replace(/[^a-z0-9]/gi,'');
+  const total = items.length;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'chat-msg chat-msg-user';
+  if(caption) wrap.appendChild(document.createTextNode(caption));
+  const gal = document.createElement('div');
+  gal.className = 'chat-msg-images';
+  items.forEach(it => { const im = new Image(); im.src = it.url; gal.appendChild(im); });
+  wrap.appendChild(gal);
+  const msgs = document.getElementById('chat-messages');
+  msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
+
+  _setChatState('thinking');
+  try{
+    let last = null;
+    for(let i=0;i<items.length;i++){
+      const it = items[i];
+      const q = new URLSearchParams({ token:_token(), batch_id:batchId, total:String(total) });
+      if(i === 0 && caption) q.set('text', caption);
+      const r = await fetch(`${BRIDGE_URL}/chat/image?${q.toString()}`, {
+        method:'POST', headers:{'Content-Type': it.file.type || 'image/jpeg'}, body: it.file
+      });
+      last = await r.json();
+      if(last.error) throw new Error(last.error);
+    }
+    if(last && last.reply) _addMsg('jarvis', last.reply);
+    else _addMsg('error', 'El servidor no devolvió respuesta.');
+  }catch(e){
+    _addMsg('error', `Error: ${e.message}`);
+  }
+  _setChatState('idle');
+}
+
 function _noMic(){
   // mediaDevices is undefined on HTTP (non-secure context). Point to HTTPS.
   const httpsUrl = `https://${location.hostname.split('.')[0]}.${location.hostname.split('.').slice(1).join('.')}/hud/`.replace('//.','//')
@@ -1481,6 +1573,11 @@ function initChat(){
 
   function doSend(){
     const text = input.value.trim();
+    if(_stagedImages.length){
+      sendImages(text);
+      input.value = ''; autoGrow(input);
+      return;
+    }
     if(!text) return;
     sendChat(text);
     input.value = '';
@@ -1509,6 +1606,17 @@ function initChat(){
     if(e.key==='Escape'){ input.blur(); }
   });
   sendBtn.addEventListener('click', doSend);
+
+  const attachBtn = document.getElementById('attach-btn');
+  const imageInput = document.getElementById('image-input');
+  if(attachBtn && imageInput){
+    attachBtn.addEventListener('click', () => imageInput.click());
+    imageInput.addEventListener('change', () => { _stageImages(imageInput.files); imageInput.value = ''; });
+  }
+  input.addEventListener('paste', e => {
+    const imgs = [...(e.clipboardData?.items || [])].filter(it => it.type.startsWith('image/'));
+    if(imgs.length){ e.preventDefault(); _stageImages(imgs.map(it => it.getAsFile()).filter(Boolean)); }
+  });
 
   voiceBtn.addEventListener('click', ()=>{
     if(_recording) stopVoice();
