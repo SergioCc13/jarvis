@@ -14,6 +14,25 @@ AFTER=$(git rev-parse origin/main)
 
 [ "$BEFORE" = "$AFTER" ] && exit 0   # nothing new
 
+# Never discard uncommitted local work — `git reset --hard` here would nuke
+# it silently every time another device pushes. Stash it instead and leave
+# a note; a human (or Claude) can `git stash pop` and sort out any conflict.
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  STASH_MSG="auto-update autostash $(date '+%Y-%m-%d %H:%M:%S')"
+  git stash push -u -m "$STASH_MSG" -q
+  echo "[auto-update] local changes stashed (\"$STASH_MSG\") before updating — run 'git stash list' to recover"
+fi
+
+# Also never discard local COMMITS that never made it to origin (e.g. this
+# device can't push — no git credentials configured here). A plain
+# `git reset --hard origin/main` would silently orphan them. Tag them under
+# refs/backup instead so they survive and are easy to find/cherry-pick later.
+if ! git merge-base --is-ancestor HEAD origin/main 2>/dev/null; then
+  BACKUP_REF="refs/backup/auto-update-$(date '+%Y%m%d-%H%M%S')"
+  git update-ref "$BACKUP_REF" HEAD
+  echo "[auto-update] local commits not on origin — backed up as $BACKUP_REF (git log $BACKUP_REF to recover, or: git cherry-pick <sha>)"
+fi
+
 echo "[auto-update] $(date '+%H:%M:%S') — updating $BEFORE → $AFTER"
 git reset --hard origin/main -q
 
