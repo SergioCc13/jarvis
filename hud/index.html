@@ -1260,11 +1260,43 @@ function _addMsg(role, text){
   msgs.scrollTop = msgs.scrollHeight;
 }
 
+// /chat fires the message and returns a job_id immediately instead of
+// blocking the connection on the whole reply — surviving navigating away or
+// the tab backgrounding mid-request (poll /chat/result; resume via
+// localStorage if the page itself gets reloaded/killed in the background).
+const CHAT_JOB_KEY = 'jarvis_chat_job';
+
+async function _pollChatJob(jobId){
+  _setChatState('thinking');
+  while(true){
+    if(JSON.parse(localStorage.getItem(CHAT_JOB_KEY) || 'null')?.id !== jobId) return;
+    await new Promise(res => setTimeout(res, 2000));
+    if(JSON.parse(localStorage.getItem(CHAT_JOB_KEY) || 'null')?.id !== jobId) return;
+    try{
+      const r = await fetch(`${BRIDGE_URL}/chat/result?token=${encodeURIComponent(_token())}&job_id=${encodeURIComponent(jobId)}`);
+      if(r.status === 404){
+        _addMsg('error', 'La respuesta se perdió (el bridge se reinició) — probá de nuevo.');
+        localStorage.removeItem(CHAT_JOB_KEY);
+        _setChatState('idle');
+        return;
+      }
+      const data = await r.json();
+      if(data.status === 'pending') continue;
+      if(data.status === 'error') _addMsg('error', `Error: ${data.error}`);
+      else if(data.status === 'done') _addMsg('jarvis', data.reply);
+      localStorage.removeItem(CHAT_JOB_KEY);
+      _setChatState('idle');
+      return;
+    }catch(e){
+      // network hiccup (phone just woke up, wifi hiccup...) — keep polling
+    }
+  }
+}
+
 async function sendChat(text){
   text = text.trim();
   if(!text) return;
   _addMsg('user', text);
-  _setChatState('thinking');
   try{
     const r = await fetch(`${BRIDGE_URL}/chat?token=${encodeURIComponent(_token())}`, {
       method:'POST',
@@ -1273,11 +1305,11 @@ async function sendChat(text){
     });
     const data = await r.json();
     if(data.error) throw new Error(data.error);
-    _addMsg('jarvis', data.reply);
+    localStorage.setItem(CHAT_JOB_KEY, JSON.stringify({id: data.job_id}));
+    _pollChatJob(data.job_id);
   }catch(e){
     _addMsg('error', `Error: ${e.message}`);
   }
-  _setChatState('idle');
 }
 
 /* ── adjuntar imágenes ─────────────────────────────────────────────── */
@@ -1327,7 +1359,6 @@ async function sendImages(caption){
   const msgs = document.getElementById('chat-messages');
   msgs.appendChild(wrap); msgs.scrollTop = msgs.scrollHeight;
 
-  _setChatState('thinking');
   try{
     let last = null;
     for(let i=0;i<items.length;i++){
@@ -1340,13 +1371,24 @@ async function sendImages(caption){
       last = await r.json();
       if(last.error) throw new Error(last.error);
     }
-    if(last && last.reply) _addMsg('jarvis', last.reply);
-    else _addMsg('error', 'El servidor no devolvió respuesta.');
+    if(last && last.job_id){
+      localStorage.setItem(CHAT_JOB_KEY, JSON.stringify({id: last.job_id}));
+      _pollChatJob(last.job_id);
+    } else {
+      _addMsg('error', 'El servidor no devolvió respuesta.');
+    }
   }catch(e){
     _addMsg('error', `Error: ${e.message}`);
   }
-  _setChatState('idle');
 }
+
+// Resume a pending job across reloads (e.g. the tab got killed in the
+// background while Jarvis was still thinking) — same idea as reopening
+// Telegram and seeing the reply that arrived while you were away.
+(function resumePendingChatJob(){
+  const saved = JSON.parse(localStorage.getItem(CHAT_JOB_KEY) || 'null');
+  if(saved?.id) _pollChatJob(saved.id);
+})();
 
 function _noMic(){
   // mediaDevices is undefined on HTTP (non-secure context). Point to HTTPS.

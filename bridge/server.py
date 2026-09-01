@@ -130,6 +130,36 @@ _image_batch_lock = threading.Lock()
 _IMG_EXT = {"image/png": ".png", "image/webp": ".webp", "image/gif": ".gif",
             "image/heic": ".heic", "image/jpeg": ".jpg", "image/jpg": ".jpg"}
 
+# ── /chat job state ──────────────────────────────────────────────────────
+# /chat and /chat/image used to block the HTTP connection for the whole
+# ask() call — if the client navigated away or the phone locked mid-request
+# the browser killed the connection and the reply was lost, even though the
+# server had finished. Now they kick off a background job and return
+# immediately; the client polls /chat/result until it's done, which survives
+# backgrounding/reloading (fire the message, come back later, like Telegram).
+_job_lock = threading.Lock()
+_job = {"id": None, "status": "idle", "reply": None, "error": None}
+
+
+def _start_chat_job(prompt):
+    job_id = uuid.uuid4().hex
+    with _job_lock:
+        _job.update({"id": job_id, "status": "pending", "reply": None, "error": None})
+
+    def worker():
+        try:
+            reply = ask(prompt)
+            with _job_lock:
+                if _job["id"] == job_id:
+                    _job.update({"status": "done", "reply": reply})
+        except Exception as e:
+            with _job_lock:
+                if _job["id"] == job_id:
+                    _job.update({"status": "error", "error": f"claude failed: {e}"})
+
+    threading.Thread(target=worker, daemon=True).start()
+    return job_id
+
 # Write token to HUD so the dashboard can connect without manual token entry
 def _write_hud_config():
     hud_dir = os.path.join(JARVIS_DIR, "hud")
@@ -365,12 +395,8 @@ class Handler(BaseHTTPRequestHandler):
         if not text:
             return self._send_json(400, {"error": "empty text"})
 
-        try:
-            reply = ask(text)
-        except Exception as e:
-            return self._send_json(502, {"error": f"claude failed: {e}"})
-
-        return self._send_json(200, {"reply": reply})
+        job_id = _start_chat_job(text)
+        return self._send_json(202, {"job_id": job_id, "status": "pending"})
 
     def _handle_chat_image(self):
         # Bytes crudos de imagen en el body, caption en ?text=. Multi-imagen:
@@ -422,11 +448,20 @@ class Handler(BaseHTTPRequestHandler):
             + (f"Mensaje del usuario: {caption}\n\n" if caption else "")
             + images_block
         )
-        try:
-            reply = ask(prompt)
-        except Exception as e:
-            return self._send_json(502, {"error": f"claude failed: {e}"})
-        return self._send_json(200, {"reply": reply, "images": n})
+        job_id = _start_chat_job(prompt)
+        return self._send_json(202, {"job_id": job_id, "status": "pending"})
+
+    def _handle_chat_result(self):
+        qs = self.path.split("?", 1)[1] if "?" in self.path else ""
+        params = urllib.parse.parse_qs(qs)
+        token = (params.get("token") or [""])[0]
+        if token != CONFIG["token"]:
+            return self._send_json(401, {"error": "unauthorized"})
+        job_id = (params.get("job_id") or [""])[0]
+        with _job_lock:
+            if not job_id or job_id != _job["id"]:
+                return self._send_json(404, {"status": "unknown"})
+            return self._send_json(200, dict(_job))
 
     def _handle_events(self):
         qs = self.path.split("?", 1)[1] if "?" in self.path else ""
@@ -461,6 +496,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/events":
             return self._handle_events()
+        if path == "/chat/result":
+            return self._handle_chat_result()
         if path == "/version":
             try:
                 h = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=JARVIS_DIR, text=True).strip()
