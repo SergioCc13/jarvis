@@ -155,7 +155,10 @@ Usa este scraper siempre que el usuario pregunte por precios de cartas, pida inf
 ## Análisis de mercado
 
 `agents/trading.py` recoge datos de mercado en tiempo real (stdlib puro, sin pip).
-`bin/analiza` genera el email diario **"Jarvis: Mercado"** y lo envía por **email + Telegram**.
+`bin/analiza` genera el email **"Jarvis: Mercado"** y lo envía por **email + Telegram**.
+
+**Cadencia**: informe **completo** (multi-agente) los **lunes**; informe **rápido**
+(`--rapido`, 1 sola llamada) el **resto de días**. Lo instala `bin/install-pi`.
 
 | Fuente | Cubre | Key necesaria |
 |---|---|---|
@@ -163,7 +166,7 @@ Usa este scraper siempre que el usuario pregunte por precios de cartas, pida inf
 | CoinGecko | Cripto (BTC, ETH, SOL, XRP, ADA, DOGE…) | No |
 | agents/scraper.py | Cartas TCG (precio Cardmarket EUR) | No |
 
-### Motor multi-agente (por defecto)
+### Motor multi-agente (informe completo, lunes)
 
 `bin/analiza` sin flags ejecuta `agents/analistas.py`: por cada activo de
 `agents/watchlist.txt` corre una cadena de roles inspirada en
@@ -183,15 +186,21 @@ Cada activo queda con un bloque: Puntuación 0-100, Recomendación
 entrada y de salida, Próximo evento relevante, y Justificación.
 
 Los indicadores (RSI, SMA 50/200, 52 s, volumen) los aporta `agents/seguimiento.py`.
+La línea **"Próximo evento relevante" NO la inventa el LLM**: sale de
+`agents/calendar_data.py` (calendario oficial de la Fed + fechas de
+resultados/dividendos de Yahoo Finance) y se fuerza en el bloque final. El email
+**adjunta el gráfico de puntuaciones** (`agents/charts.py --scores`, 0 tokens;
+necesita `python3-matplotlib`, que instala `bin/install-pi`).
 
 **Coste**: ~6 llamadas por activo + 1. Con la watchlist de 21 activos ≈ 127 llamadas
-y **~20-40 min** por ejecución. No es asesoría financiera: es un scaffold de análisis.
+y **~20-40 min** por ejecución. Por eso corre **solo los lunes**. No es asesoría
+financiera: es un scaffold de análisis.
 
 ```bash
 bin/analiza                       # watchlist completa, multi-agente → email + Telegram
 bin/analiza --only BTC ETH        # solo esos activos (para probar)
 bin/analiza --limit 3             # solo los 3 primeros
-bin/analiza --rapido [SÍMBOLOS]   # modo antiguo: 1 resumen de 180 palabras (barato, rápido)
+bin/analiza --rapido [SÍMBOLOS]   # 1 llamada: resumen de 180 palabras (informe diario)
 python3 agents/trading.py AAPL BTC ^GSPC   # solo datos brutos, sin LLM
 ```
 
@@ -206,9 +215,10 @@ Cómo obtenerlo: myaccount.google.com → Seguridad → Verificación en 2 pasos
 - *"resumen rápido del mercado"* → `bin/analiza --rapido`
 - *"agentes: analiza mi cartera"* → `bin/analiza` (ya es multi-agente)
 
-**Cron (Pi)** — añadido por `bin/install-pi` (más temprano porque tarda ~20-40 min):
+**Cron (Pi)** — añadido por `bin/install-pi`:
 ```
-0 7 * * * cd /home/pi/jarvis && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
+30 6 * * 1     cd /home/pi/jarvis && bin/analiza          >> /tmp/jarvis-mercado.log 2>&1  # completo, lunes
+0  7 * * 0,2-6 cd /home/pi/jarvis && bin/analiza --rapido >> /tmp/jarvis-mercado.log 2>&1  # rápido, resto
 ```
 
 El informe se guarda en `vault/outputs/mercado.md` (visible en el HUD). Telegram

@@ -145,9 +145,12 @@ def synthesize(text: str) -> bytes | None:
 
 # ── email ────────────────────────────────────────────────────────────
 
-def send_email(subject: str, body: str) -> tuple[bool, str]:
+def send_email(subject: str, body: str, attachments: list[str] | None = None) -> tuple[bool, str]:
+    import mimetypes
     import smtplib
     import ssl as ssl_lib
+    from email import encoders
+    from email.mime.base import MIMEBase
     from email.mime.multipart import MIMEMultipart
     from email.mime.text import MIMEText
 
@@ -165,6 +168,21 @@ def send_email(subject: str, body: str) -> tuple[bool, str]:
     msg["From"]    = from_addr
     msg["To"]      = to_addr
     msg.attach(MIMEText(body, "plain", "utf-8"))
+
+    for path in attachments or []:
+        try:
+            with open(path, "rb") as fh:
+                raw = fh.read()
+        except OSError:
+            continue  # a missing chart shouldn't sink the whole email
+        ctype, _ = mimetypes.guess_type(path)
+        maintype, _, subtype = (ctype or "application/octet-stream").partition("/")
+        part = MIMEBase(maintype, subtype or "octet-stream")
+        part.set_payload(raw)
+        encoders.encode_base64(part)
+        part.add_header("Content-Disposition", "attachment",
+                        filename=os.path.basename(path))
+        msg.attach(part)
 
     last_err = None
     for verified in (True, False):
@@ -194,10 +212,12 @@ def dispatch(
     channels: list[str] | None = None,
     voice_for_telegram: bool = True,
     subject: str = "Jarvis",
+    attachments: list[str] | None = None,
 ) -> dict[str, tuple[bool, str]]:
     """Send message to all configured/requested channels.
 
     channels: list of "discord", "telegram", "email". None = all configured.
+    attachments: file paths to attach (email only; other channels ignore them).
     Returns dict of {channel: (ok, detail)}.
     """
     results: dict[str, tuple[bool, str]] = {}
@@ -224,7 +244,7 @@ def dispatch(
             else:
                 results["telegram"] = send_telegram(message)
         elif ch == "email":
-            results["email"] = send_email(subject, message)
+            results["email"] = send_email(subject, message, attachments)
         else:
             results[ch] = (False, f"unknown channel '{ch}'")
 
@@ -240,6 +260,8 @@ if __name__ == "__main__":
     parser.add_argument("--channels", "-c", help="Comma-separated: discord,telegram,email")
     parser.add_argument("--no-voice", action="store_true", help="Text-only for Telegram")
     parser.add_argument("--subject", "-s", default="Jarvis", help="Email subject line")
+    parser.add_argument("--attach", "-a", action="append", default=[],
+                        help="File to attach to the email (repeatable)")
     args = parser.parse_args()
 
     msg = args.message or (sys.stdin.read().strip() if not sys.stdin.isatty() else None)
@@ -247,7 +269,8 @@ if __name__ == "__main__":
         parser.error("Provide a message as argument or via stdin")
 
     chs = [c.strip() for c in args.channels.split(",")] if args.channels else None
-    results = dispatch(msg, channels=chs, voice_for_telegram=not args.no_voice, subject=args.subject)
+    results = dispatch(msg, channels=chs, voice_for_telegram=not args.no_voice,
+                       subject=args.subject, attachments=args.attach or None)
 
     for ch, (ok, detail) in results.items():
         status = "✓" if ok else "✗"
