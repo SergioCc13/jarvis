@@ -30,8 +30,10 @@ vault/outputs/*
 !vault/outputs/.gitkeep
 vault/raw/*
 !vault/raw/.gitkeep
-vault/wiki/*
-!vault/wiki/.gitkeep
+
+# vault/wiki/ IS committed — it's the project knowledge graph (see vault/wiki/MOC.md).
+# Personal / scratch notes go in vault/wiki/private/, which stays local.
+vault/wiki/private/
 
 # Obsidian workspace state (machine-specific paths/window layout)
 vault/.obsidian/

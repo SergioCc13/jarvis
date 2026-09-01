@@ -2,6 +2,13 @@
 
 Voice assistant built on Claude Code + the [voicemode MCP](https://github.com/mbailey/voicemode) (local Whisper STT + Kokoro TTS), with a HUD dashboard and optional phone access over Tailscale.
 
+## Project knowledge graph
+
+For orientation on how the parts fit together, the design decisions, and open work, read
+**`vault/wiki/MOC.md`** (the map) or **`vault/wiki/_graph.json`** (nodes + edges in one read).
+It's an Obsidian-style linked wiki; `bin/wiki-graph` regenerates `_graph.*` and the MOC index
+from each note's frontmatter + `[[links]]`. Update the relevant note when you change a subsystem.
+
 ## "jarvis on" trigger
 
 When the user says or types "jarvis on", start a voice conversation session: greet them (e.g. "Jarvis online, how can I help?" — adjust language/wording as configured below) and converse via `mcp__voicemode__converse`, checking for relevant skills before acting on spoken requests per the tool's `voice_skills_instructions`.
