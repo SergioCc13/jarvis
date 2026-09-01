@@ -21,6 +21,9 @@ import urllib.request
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from session_lock import claude_session_lock  # noqa: E402
+
 # ── SSE event bus ─────────────────────────────────────────────────────────────
 _sse_clients: list[queue.Queue] = []
 
@@ -304,7 +307,10 @@ def ask_claude(text):
         args += ["--resume", CONFIG["session_id"]]
     else:
         args += ["--session-id", CONFIG["session_id"]]
-    result = subprocess.run(args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=600)
+    # Serialise with the Telegram bot: both --resume the SAME session id, and
+    # two concurrent `claude --resume` can corrupt it.
+    with claude_session_lock():
+        result = subprocess.run(args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=600)
     if result.returncode != 0:
         raise RuntimeError(f"claude exited {result.returncode}: {result.stderr[-2000:]}")
     data = json.loads(result.stdout)

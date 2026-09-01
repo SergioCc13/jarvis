@@ -19,6 +19,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from session_lock import claude_session_lock  # noqa: E402  (bridge/session_lock.py)
+
 TOKEN          = os.environ.get("JARVIS_TELEGRAM_TOKEN", "")
 ALLOWED_ID     = int(os.environ.get("JARVIS_TELEGRAM_CHAT_ID", "0") or 0)
 KOKORO_URL     = os.environ.get("VOICEMODE_TTS_URL", "http://127.0.0.1:8880/v1/audio/speech")
@@ -106,9 +109,14 @@ def ask_claude(message):
     elif session_id:
         args += ["--session-id", session_id]
 
-    result = subprocess.run(
-        args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=120,
-    )
+    try:
+        # one `claude --resume <session>` at a time (the HUD bridge shares it)
+        with claude_session_lock():
+            result = subprocess.run(
+                args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=120,
+            )
+    except TimeoutError as e:
+        return f"(ocupado: {e})"
     if result.returncode != 0:
         return f"(error claude: {result.stderr[-300:]})"
 

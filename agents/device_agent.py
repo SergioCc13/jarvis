@@ -28,6 +28,15 @@ HUB_TOKEN = os.environ.get("JARVIS_HUB_TOKEN", "")
 DEVICE_NAME = os.environ.get("JARVIS_DEVICE_NAME", socket.gethostname())
 PLATFORM = sys.platform  # darwin | linux | win32
 
+# This agent runs arbitrary shell over HTTP, so keep the exposure tight:
+#   - bind to the Tailscale IP, not 0.0.0.0 (override with JARVIS_AGENT_BIND)
+#   - accept the token in an X-Jarvis-Token header, not only the query string
+#     (query strings leak into logs / proxy logs / history)
+#   - JARVIS_AGENT_ALLOW_SHELL=0 disables the raw `shell` action entirely
+#   - cap request bodies at 1 MiB
+ALLOW_SHELL = os.environ.get("JARVIS_AGENT_ALLOW_SHELL", "1") != "0"
+MAX_BODY = 1_048_576
+
 HEARTBEAT_INTERVAL = 60   # seconds between registration retries / heartbeats
 
 
@@ -107,7 +116,7 @@ def registration_loop():
 
 
 def get_capabilities():
-    caps = ["shell", "open_url", "notify", "get_status"]
+    caps = (["shell"] if ALLOW_SHELL else []) + ["open_url", "notify", "get_status"]
     if PLATFORM == "darwin":
         caps += ["open_app", "volume", "mute", "screenshot", "sleep"]
     elif PLATFORM == "linux":
@@ -121,11 +130,13 @@ def execute_action(action, params):
     """Execute a device action. Returns (ok: bool, result: str)."""
 
     if action == "shell":
+        if not ALLOW_SHELL:
+            return False, "shell deshabilitado (JARVIS_AGENT_ALLOW_SHELL=0)"
         cmd = params.get("cmd", "")
         if not cmd:
             return False, "missing 'cmd'"
         r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=30)
-        return r.returncode == 0, (r.stdout + r.stderr).strip()
+        return r.returncode == 0, (r.stdout + r.stderr).strip()[:20000]
 
     if action == "open_app":
         app = params.get("app", "")
@@ -219,9 +230,12 @@ def execute_action(action, params):
 class Handler(BaseHTTPRequestHandler):
     def _auth(self):
         import urllib.parse
-        qs = self.path.split("?", 1)[1] if "?" in self.path else ""
-        token = urllib.parse.parse_qs(qs).get("token", [""])[0]
-        return token == CONFIG["token"]
+        # header first (doesn't leak into logs); query string kept for compat
+        token = self.headers.get("X-Jarvis-Token", "")
+        if not token:
+            qs = self.path.split("?", 1)[1] if "?" in self.path else ""
+            token = urllib.parse.parse_qs(qs).get("token", [""])[0]
+        return bool(token) and token == CONFIG["token"]
 
     def _json(self, code, obj):
         body = json.dumps(obj, ensure_ascii=False).encode()
@@ -256,6 +270,8 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         if not length:
             return self._json(400, {"error": "empty body"})
+        if length > MAX_BODY:
+            return self._json(413, {"error": "body too large"})
 
         try:
             payload = json.loads(self.rfile.read(length))
@@ -286,9 +302,13 @@ class Handler(BaseHTTPRequestHandler):
 # ── main ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # bind to the Tailscale interface, not every interface, when we can
+    bind = os.environ.get("JARVIS_AGENT_BIND") or get_tailscale_ip() or "0.0.0.0"
     print(f"[agent] Device: {DEVICE_NAME} ({PLATFORM})")
     print(f"[agent] Token:  {CONFIG['token']}")
-    print(f"[agent] Listening on 0.0.0.0:{PORT}")
+    print(f"[agent] Listening on {bind}:{PORT}"
+          + ("" if bind != "0.0.0.0" else "  (todas las interfaces — set JARVIS_AGENT_BIND)"))
+    print(f"[agent] shell action: {'on' if ALLOW_SHELL else 'OFF'}")
     print(f"[agent] Capabilities: {', '.join(get_capabilities())}")
     threading.Thread(target=registration_loop, daemon=True).start()
-    ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
+    ThreadingHTTPServer((bind, PORT), Handler).serve_forever()
