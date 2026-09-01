@@ -224,11 +224,19 @@
     transition: opacity .45s ease, width .45s ease, filter .45s ease;
   }
   .orb-panel.orb-listening::before{ opacity:1; width:min(104%, 560px); filter:blur(20px); }
+  .orb-panel.orb-thinking::before{
+    opacity:1; width:min(88%, 470px); filter:blur(16px);
+    animation: orb-think 1.7s ease-in-out infinite;
+  }
   .orb-panel.orb-speaking::before{
     opacity:1; width:min(96%, 520px); filter:blur(18px);
     animation: orb-breathe 2.4s ease-in-out infinite;
   }
   @keyframes orb-breathe{ 0%,100%{ transform:translate(-50%,-50%) scale(.94); } 50%{ transform:translate(-50%,-50%) scale(1.06); } }
+  @keyframes orb-think{
+    0%,100%{ transform:translate(-50%,-50%) scale(.9);   opacity:.7; }
+    50%    { transform:translate(-50%,-50%) scale(1.05);  opacity:1;  }
+  }
   #core-canvas{ display:block; position:relative; transition: transform .3s ease; }
   .core-label{
     font-family:var(--mono); font-size:12px; letter-spacing:3px; text-transform:uppercase;
@@ -1024,15 +1032,17 @@ const ACCENT_RGB = (() => {
 })();
 
 const CORE_STATES = {
-  idle:      { ampNoiseR:0.045, ampWaveR:0,    freq1:1.3, freq2:3.1, timeSpeed:0.10, waveFreq:0, waveSpeed:0,   breathe:0.030, brightness:0.60, glowR:0.85 },
-  listening: { ampNoiseR:0.130, ampWaveR:0.03, freq1:2.1, freq2:5.4, timeSpeed:0.50, waveFreq:0, waveSpeed:0,   breathe:0.012, brightness:1.05, glowR:1.75 },
-  speaking:  { ampNoiseR:0.075, ampWaveR:0.11, freq1:1.6, freq2:3.0, timeSpeed:0.30, waveFreq:3, waveSpeed:2.2, breathe:0.020, brightness:1.00, glowR:1.55 },
+  idle:      { ampNoiseR:0.055, ampWaveR:0,    freq1:1.3, freq2:3.1, timeSpeed:0.16, waveFreq:0, waveSpeed:0,   breathe:0.034, brightness:0.62, glowR:0.90 },
+  listening: { ampNoiseR:0.150, ampWaveR:0.04, freq1:2.1, freq2:5.4, timeSpeed:0.60, waveFreq:0, waveSpeed:0,   breathe:0.010, brightness:1.08, glowR:1.90 },
+  thinking:  { ampNoiseR:0.100, ampWaveR:0.02, freq1:1.9, freq2:4.6, timeSpeed:1.05, waveFreq:0, waveSpeed:0,   breathe:0.050, brightness:0.86, glowR:1.25 },
+  speaking:  { ampNoiseR:0.085, ampWaveR:0.13, freq1:1.6, freq2:3.0, timeSpeed:0.34, waveFreq:3, waveSpeed:2.4, breathe:0.020, brightness:1.02, glowR:1.60 },
 };
-const CORE_LABELS = { idle:'en espera', listening:'escuchando…', speaking:'hablando…' };
+const CORE_LABELS = { idle:'en espera', listening:'escuchando…', thinking:'pensando…', speaking:'hablando…' };
 let coreTargetState = 'idle';
 const coreCurrent = { ...CORE_STATES.idle };
 
 function setCoreTarget(state){
+  if(!CORE_STATES[state]) state = 'idle';
   if(coreTargetState===state) return;
   coreTargetState = state;
   const lbl = document.getElementById('audio-state');
@@ -1041,8 +1051,17 @@ function setCoreTarget(state){
   const orb = document.getElementById('panel-core');
   if(orb){
     orb.classList.toggle('orb-listening', state==='listening');
+    orb.classList.toggle('orb-thinking',  state==='thinking');
     orb.classList.toggle('orb-speaking',  state==='speaking');
   }
+}
+
+// While the HUD chat/voice is active it owns the orb; renderAudio (voicemode
+// log poller) must not yank it back to idle underneath. null = released.
+let _hudCore = null;
+function hudCore(state){
+  _hudCore = state || null;
+  setCoreTarget(state || 'idle');
 }
 
 function initCore(){
@@ -1066,8 +1085,11 @@ function initCore(){
     const lr=1-Math.pow(0.02,dt);
     for(const k in target) coreCurrent[k]=noiseLerp(coreCurrent[k],target[k],lr);
     noiseT+=coreCurrent.timeSpeed*dt; waveT+=coreCurrent.waveSpeed*dt;
-    breatheT+=dt; rotT+=dt*0.06; floatT+=dt;
-    const scale=1+Math.sin(breatheT*0.9)*coreCurrent.breathe;
+    // lumps travel round the rim faster while thinking → "spinning thoughts"
+    const rotBoost = coreTargetState==='thinking' ? 3.4 : coreTargetState==='listening' ? 1.8 : 1;
+    breatheT+=dt; rotT+=dt*0.06*rotBoost; floatT+=dt;
+    const breatheHz = coreTargetState==='thinking' ? 2.3 : 0.9;
+    const scale=1+Math.sin(breatheT*breatheHz)*coreCurrent.breathe;
     const sqX=1+noise2D(breatheT*.05,11.3)*.015;
     const sqY=1+noise2D(breatheT*.05,47.9)*.015;
     const ox=cx+Math.cos(floatT*.17)*baseR*.035;
@@ -1155,6 +1177,7 @@ async function renderAudio(){
   let text=await fetchText(`voicemode-logs/voicemode_events_${today}.jsonl`);
   if(!text){ const y=new Date(); y.setDate(y.getDate()-1); text=await fetchText(`voicemode-logs/voicemode_events_${todayStr(y)}.jsonl`); }
   const evs=parseJsonl(text);
+  if(_hudCore) return; // HUD chat/voice owns the orb right now
   if(!evs.length){ if(!_recording) setCoreTarget('idle'); return; }
   let lrs=null,lre=null,lss=null,lse=null;
   evs.forEach(ev => {
@@ -1163,7 +1186,7 @@ async function renderAudio(){
     if(ev.event_type==='TTS_PLAYBACK_START') lss=ev.timestamp;
     if(ev.event_type==='TTS_PLAYBACK_END') lse=ev.timestamp;
   });
-  if(_recording) return; // don't override if HUD chat is active
+  if(_recording || _hudCore) return; // don't override if HUD chat/voice is active
   const speaking=!!lss&&(!lse||lse<lss);
   const listening=!speaking&&!!lrs&&(!lre||lre<lrs);
   setCoreTarget(speaking?'speaking':(listening?'listening':'idle'));
@@ -1245,10 +1268,21 @@ function _setChatState(state){
   const panel = document.getElementById('chat-panel');
   panel.classList.toggle('listening', state === 'listening');
   panel.classList.toggle('thinking',  state === 'thinking');
-  const stateEl = document.getElementById('audio-state');
-  if(stateEl) stateEl.textContent =
-    state === 'listening' ? 'escuchando…' :
-    state === 'thinking'  ? 'pensando…'   : 'en espera';
+  // drive the crystal orb with the same state ('idle'/unknown releases it)
+  hudCore(state === 'listening' ? 'listening'
+        : state === 'thinking'  ? 'thinking'
+        : state === 'speaking'  ? 'speaking'
+        : null);
+}
+
+// Text chat has no audio on the page, but still give the orb a "hablando" beat
+// when the reply lands, scaled to how much there is to read.
+let _speakPulseTimer = null;
+function _orbSpeakPulse(text){
+  clearTimeout(_speakPulseTimer);
+  hudCore('speaking');
+  const ms = Math.max(1600, Math.min(6000, (text || '').length * 45));
+  _speakPulseTimer = setTimeout(() => { if(_hudCore === 'speaking') _setChatState('idle'); }, ms);
 }
 
 function _addMsg(role, text){
@@ -1282,10 +1316,10 @@ async function _pollChatJob(jobId){
       }
       const data = await r.json();
       if(data.status === 'pending') continue;
-      if(data.status === 'error') _addMsg('error', `Error: ${data.error}`);
-      else if(data.status === 'done') _addMsg('jarvis', data.reply);
       localStorage.removeItem(CHAT_JOB_KEY);
-      _setChatState('idle');
+      if(data.status === 'error'){ _addMsg('error', `Error: ${data.error}`); _setChatState('idle'); }
+      else if(data.status === 'done'){ _addMsg('jarvis', data.reply); _orbSpeakPulse(data.reply); }
+      else _setChatState('idle');
       return;
     }catch(e){
       // network hiccup (phone just woke up, wifi hiccup...) — keep polling
@@ -1478,7 +1512,13 @@ async function _sendVoice(){
     if(transcript) _addMsg('user', transcript);
     if(reply)      _addMsg('jarvis', reply);
     const audio = new Audio(URL.createObjectURL(await r.blob()));
-    audio.play();
+    audio.onended = audio.onerror = () => _setChatState('idle');
+    hudCore('speaking');                         // orb pulses while Jarvis talks
+    audio.play().catch(() => {                   // autoplay blocked → approximate it
+      if(!reply) return _setChatState('idle');
+      _orbSpeakPulse(reply);
+    });
+    return;
   }catch(e){
     _addMsg('error', `Voz: ${e.message}`);
   }
