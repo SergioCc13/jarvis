@@ -1,0 +1,232 @@
+#!/usr/bin/env python3
+"""Build the Jarvis knowledge graph from vault/wiki/*.md.
+
+Scans every note (any depth, minus `private/` and `_*`), reads its YAML-ish
+frontmatter and its `[[wikilinks]]`, and writes two derived files:
+
+  vault/wiki/_graph.json  — compact, machine-readable: nodes + edges. One read
+                            gives a program (or Claude) the whole map.
+  vault/wiki/_graph.md    — the same, grouped by tag, human/Claude friendly.
+
+It also rewrites the block between
+  <!-- AUTO:INDEX --> ... <!-- /AUTO:INDEX -->
+in vault/wiki/MOC.md with a fresh grouped index, leaving the rest of MOC alone.
+
+Scalable by convention: add a note = drop a .md file with frontmatter, rerun.
+Nothing here enumerates notes by hand.
+
+Usage:
+  bin/wiki-graph            regenerate the derived files
+  bin/wiki-graph --check    exit 1 if regeneration would change anything or if
+                            there are broken links / missing summaries (for CI
+                            or a pre-commit hook)
+
+Stdlib only.
+"""
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+
+WIKI = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vault", "wiki")
+GRAPH_JSON = os.path.join(WIKI, "_graph.json")
+GRAPH_MD   = os.path.join(WIKI, "_graph.md")
+MOC        = os.path.join(WIKI, "MOC.md")
+INDEX_OPEN, INDEX_CLOSE = "<!-- AUTO:INDEX -->", "<!-- /AUTO:INDEX -->"
+
+_LINK_RE   = re.compile(r"\[\[([^\]]+)\]\]")
+_FENCE_RE  = re.compile(r"```.*?```", re.S)
+_INLINE_RE = re.compile(r"`[^`\n]*`")
+_TITLE_RE  = re.compile(r"^#\s+(.+)$", re.M)
+
+
+def slug(name: str) -> str:
+    """A wikilink target or filename → canonical node id."""
+    name = name.split("|", 1)[0].split("#", 1)[0].strip()          # drop |alias and #heading
+    name = os.path.splitext(os.path.basename(name))[0]
+    return re.sub(r"[\s_]+", "-", name.strip().lower())
+
+
+def parse_frontmatter(text: str):
+    """Minimal front-matter reader: `key: value`, plus `[a, b]` / `a b` lists.
+    Not a full YAML parser on purpose — keeps the dependency surface at zero."""
+    meta, body = {}, text
+    if text.startswith("---"):
+        end = text.find("\n---", 3)
+        if end != -1:
+            block = text[3:end]
+            body = text[end + 4:].lstrip("\n")
+            for line in block.splitlines():
+                line = line.strip()
+                if not line or line.startswith("#") or ":" not in line:
+                    continue
+                k, v = line.split(":", 1)
+                k, v = k.strip().lower(), v.strip()
+                if v.startswith("[") and v.endswith("]"):
+                    v = [x.strip().strip("'\"") for x in v[1:-1].split(",") if x.strip()]
+                elif k in ("tags", "aliases") and v:
+                    v = [x.strip() for x in v.replace(",", " ").split()]
+                meta[k] = v
+    return meta, body
+
+
+def links_in(body: str):
+    body = _INLINE_RE.sub("", _FENCE_RE.sub("", body))  # ignore [[x]] shown as code
+    seen, out = set(), []
+    for m in _LINK_RE.finditer(body):
+        s = slug(m.group(1))
+        if s and s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
+
+
+def collect():
+    notes = {}
+    for root, dirs, files in os.walk(WIKI):
+        dirs[:] = [d for d in dirs if d != "private" and not d.startswith(".")]
+        for fn in files:
+            if not fn.endswith(".md") or fn.startswith("_"):
+                continue
+            path = os.path.join(root, fn)
+            rel = os.path.relpath(path, WIKI)
+            text = open(path, encoding="utf-8").read()
+            meta, body = parse_frontmatter(text)
+            node_id = slug(fn)
+            h1 = _TITLE_RE.search(body)
+            tags = meta.get("tags") or ["sin-tag"]
+            if isinstance(tags, str):
+                tags = [tags]
+            notes[node_id] = {
+                "id": node_id,
+                "title": meta.get("title") or (h1.group(1).strip() if h1 else node_id),
+                "summary": (meta.get("summary") or "").strip(),
+                "tags": [t.lstrip("#") for t in tags],
+                "status": meta.get("status", ""),
+                "updated": str(meta.get("updated", "")),
+                "file": rel.replace(os.sep, "/"),
+                "links": links_in(body),
+            }
+    return notes
+
+
+def build_graph(notes):
+    ids = set(notes)
+    edges, broken = [], []
+    for n in sorted(notes.values(), key=lambda x: x["id"]):
+        for tgt in n["links"]:
+            if tgt in ids:
+                edges.append([n["id"], tgt])
+            else:
+                broken.append((n["id"], tgt))
+    inbound = {i: 0 for i in ids}
+    for a, b in edges:
+        inbound[b] += 1
+    orphans = sorted(i for i in ids if inbound[i] == 0 and i not in ("moc",))
+    no_summary = sorted(i for i in ids if not notes[i]["summary"])
+    return {
+        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "note_count": len(notes),
+        "nodes": [notes[i] for i in sorted(notes)],
+        "edges": sorted(edges),
+    }, sorted(set(broken)), orphans, no_summary
+
+
+def group_by_tag(nodes):
+    groups = {}
+    for n in nodes:
+        groups.setdefault(n["tags"][0] if n["tags"] else "sin-tag", []).append(n)
+    return dict(sorted(groups.items()))
+
+
+def render_index_md(nodes, *, links=False):
+    out = []
+    for tag, items in group_by_tag(nodes).items():
+        out.append(f"\n### {tag}\n")
+        for n in sorted(items, key=lambda x: x["title"].lower()):
+            line = f"- [[{n['id']}|{n['title']}]] — {n['summary'] or '_(sin resumen)_'}"
+            if n["status"]:
+                line += f"  ·  `{n['status']}`"
+            out.append(line)
+            if links and n["links"]:
+                out.append(f"  ↳ {' '.join('[[' + l + ']]' for l in n['links'])}")
+    return "\n".join(out).strip() + "\n"
+
+
+def render_graph_md(graph, broken, orphans):
+    d = graph
+    lines = [
+        "---", "title: Grafo (generado)", "tags: [meta]",
+        "summary: Índice completo del wiki, regenerado por bin/wiki-graph. No editar a mano.",
+        "---", "",
+        f"# Grafo del wiki — {d['note_count']} notas",
+        f"_Generado {d['generated']} por `bin/wiki-graph`. **No editar a mano.**_", "",
+        render_index_md(d["nodes"], links=True),
+    ]
+    if broken:
+        lines += ["", "## ⚠ Enlaces rotos", ""]
+        lines += [f"- `{a}` → `[[{b}]]` (no existe)" for a, b in broken]
+    if orphans:
+        lines += ["", "## ⚠ Notas huérfanas (nadie las enlaza)", ""]
+        lines += [f"- [[{o}]]" for o in orphans]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def patch_moc(index_md):
+    if not os.path.exists(MOC):
+        return None
+    text = open(MOC, encoding="utf-8").read()
+    if INDEX_OPEN not in text or INDEX_CLOSE not in text:
+        return text  # no markers → leave MOC untouched
+    pre = text[: text.index(INDEX_OPEN) + len(INDEX_OPEN)]
+    post = text[text.index(INDEX_CLOSE):]
+    return f"{pre}\n_Regenerado por `bin/wiki-graph` — no editar este bloque._\n\n{index_md}\n{post}"
+
+
+def write_if_changed(path, content, changed):
+    old = open(path, encoding="utf-8").read() if os.path.exists(path) else None
+    if old == content:
+        return
+    changed.append(os.path.relpath(path, WIKI))
+    if not CHECK:
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+
+
+CHECK = "--check" in sys.argv[1:]
+
+
+def main():
+    if not os.path.isdir(WIKI):
+        sys.exit(f"no existe {WIKI}")
+    notes = collect()
+    if not notes:
+        sys.exit(f"no hay notas en {WIKI}")
+    graph, broken, orphans, no_summary = build_graph(notes)
+
+    changed = []
+    write_if_changed(GRAPH_JSON, json.dumps(graph, ensure_ascii=False, indent=2) + "\n", changed)
+    write_if_changed(GRAPH_MD, render_graph_md(graph, broken, orphans), changed)
+    moc = patch_moc(render_index_md(graph["nodes"]))
+    if moc is not None:
+        write_if_changed(MOC, moc, changed)
+
+    print(f"[wiki-graph] {graph['note_count']} notas, {len(graph['edges'])} enlaces")
+    for a, b in broken:
+        print(f"  ⚠ enlace roto: {a} → [[{b}]]")
+    for o in orphans:
+        print(f"  ⚠ huérfana: {o}")
+    for i in no_summary:
+        print(f"  ⚠ sin summary en frontmatter: {i}")
+
+    if CHECK:
+        problems = changed or broken or no_summary
+        if changed:
+            print(f"  ✗ desactualizado: {', '.join(changed)} — corre bin/wiki-graph")
+        sys.exit(1 if problems else 0)
+    print("  ✓ _graph.json / _graph.md / MOC.md al día")
+
+
+if __name__ == "__main__":
+    main()

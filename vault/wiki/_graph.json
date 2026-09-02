@@ -1,0 +1,918 @@
+{
+  "generated": "2026-09-01T20:37:00Z",
+  "note_count": 23,
+  "nodes": [
+    {
+      "id": "bridge",
+      "title": "Bridge",
+      "summary": "Servidor HTTP hub en el puerto 8792 — voz, chat, registro de dispositivos y SSE.",
+      "tags": [
+        "subsistema",
+        "red"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "bridge.md",
+      "links": [
+        "sesion-claude",
+        "hud",
+        "device-agent",
+        "pr-5-telegram-ollama-jobs",
+        "ollama-fallback",
+        "telegram",
+        "notificaciones"
+      ]
+    },
+    {
+      "id": "coste-tokens",
+      "title": "Coste de tokens",
+      "summary": "Prioridad del proyecto — minimizar consumo de cuota; preferir stdlib a llamadas LLM.",
+      "tags": [
+        "decision",
+        "llm"
+      ],
+      "status": "vivo",
+      "updated": "2026-09-01",
+      "file": "coste-tokens.md",
+      "links": [
+        "mercado",
+        "pr-2-mercado-cadencia",
+        "vault-refresh",
+        "pr-6-hardening",
+        "seguimiento",
+        "ollama-fallback"
+      ]
+    },
+    {
+      "id": "cron",
+      "title": "Cron de la Pi",
+      "summary": "Qué corre y cuándo en la Raspberry Pi; lo instala bin/install-pi.",
+      "tags": [
+        "subsistema",
+        "ops"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "cron.md",
+      "links": [
+        "watchdog",
+        "vault-refresh",
+        "seguimiento",
+        "mercado",
+        "pr-2-mercado-cadencia",
+        "ideas-pendientes"
+      ]
+    },
+    {
+      "id": "device-agent",
+      "title": "Agente de dispositivo",
+      "summary": "agents/device_agent.py — HTTP :8793 en cada equipo; ejecuta acciones (shell, apps, volumen…).",
+      "tags": [
+        "subsistema",
+        "red"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "device-agent.md",
+      "links": [
+        "bridge",
+        "pr-6-hardening"
+      ]
+    },
+    {
+      "id": "hud",
+      "title": "HUD",
+      "summary": "Dashboard web (hud/*.html) servido estático — orbe, chat, voz, estado, SSE.",
+      "tags": [
+        "subsistema",
+        "frontend"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "hud.md",
+      "links": [
+        "bridge",
+        "orbe",
+        "pr-3-orbe-vivo"
+      ]
+    },
+    {
+      "id": "ideas-pendientes",
+      "title": "Ideas y pendientes",
+      "summary": "Cosas detectadas que aún no son PR — cron, refactor de ollama, seguridad del agente.",
+      "tags": [
+        "idea",
+        "ops"
+      ],
+      "status": "abierto",
+      "updated": "2026-09-01",
+      "file": "ideas-pendientes.md",
+      "links": [
+        "pr-1-ollama-fallback",
+        "pr-5-telegram-ollama-jobs",
+        "ollama-fallback",
+        "pr-2-mercado-cadencia",
+        "cron",
+        "sesion-claude",
+        "device-agent",
+        "orbe",
+        "wiki-como-funciona"
+      ]
+    },
+    {
+      "id": "mercado",
+      "title": "Análisis de mercado",
+      "summary": "bin/analiza — informe completo multi-agente los lunes, rápido (1 llamada) a diario.",
+      "tags": [
+        "subsistema",
+        "mercado"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "mercado.md",
+      "links": [
+        "seguimiento",
+        "pr-2-mercado-cadencia",
+        "coste-tokens",
+        "cron"
+      ]
+    },
+    {
+      "id": "moc",
+      "title": "Jarvis — Mapa",
+      "summary": "Punto de entrada del wiki. Empieza aquí; el índice de abajo se regenera solo.",
+      "tags": [
+        "meta"
+      ],
+      "status": "vivo",
+      "updated": "2026-09-01",
+      "file": "MOC.md",
+      "links": [
+        "wiki-como-funciona",
+        "coste-tokens",
+        "ideas-pendientes",
+        "moc",
+        "pr-1-ollama-fallback",
+        "pr-2-mercado-cadencia",
+        "pr-3-orbe-vivo",
+        "pr-4-bugs-varios",
+        "pr-5-telegram-ollama-jobs",
+        "pr-6-hardening",
+        "device-agent",
+        "mercado",
+        "telegram",
+        "bridge",
+        "cron",
+        "ollama-fallback",
+        "hud",
+        "notificaciones",
+        "orbe",
+        "seguimiento",
+        "sesion-claude",
+        "vault-refresh",
+        "watchdog"
+      ]
+    },
+    {
+      "id": "notificaciones",
+      "title": "Notificaciones",
+      "summary": "bridge/notify.py — Discord / Telegram / email desde un solo dispatch().",
+      "tags": [
+        "subsistema",
+        "red"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "notificaciones.md",
+      "links": [
+        "watchdog",
+        "seguimiento",
+        "mercado",
+        "pr-4-bugs-varios",
+        "pr-2-mercado-cadencia",
+        "telegram",
+        "cron"
+      ]
+    },
+    {
+      "id": "ollama-fallback",
+      "title": "Fallback a Ollama",
+      "summary": "LLM local cuando claude no responde — recorre backends, verifica modelo, timeout largo.",
+      "tags": [
+        "subsistema",
+        "llm"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "ollama-fallback.md",
+      "links": [
+        "pr-1-ollama-fallback",
+        "pr-5-telegram-ollama-jobs",
+        "telegram",
+        "ideas-pendientes",
+        "bridge",
+        "coste-tokens"
+      ]
+    },
+    {
+      "id": "orbe",
+      "title": "Orbe de cristal",
+      "summary": "La bola del HUD — canvas con ruido; estados idle/listening/thinking/speaking.",
+      "tags": [
+        "subsistema",
+        "frontend"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "orbe.md",
+      "links": [
+        "pr-3-orbe-vivo",
+        "hud"
+      ]
+    },
+    {
+      "id": "pr-1-ollama-fallback",
+      "title": "\"PR #1 — fix ollama-fallback\"",
+      "summary": "El fallback a Ollama de server.py anunciaba el cambio pero nunca respondía.",
+      "tags": [
+        "pr",
+        "llm"
+      ],
+      "status": "abierto",
+      "updated": "2026-09-01",
+      "file": "pr-1-ollama-fallback.md",
+      "links": [
+        "ollama-fallback",
+        "bridge"
+      ]
+    },
+    {
+      "id": "pr-2-mercado-cadencia",
+      "title": "\"PR #2 — mercado: semanal + diario\"",
+      "summary": "Multi-agente solo los lunes, rápido a diario; + fechas reales y gráfico de puntuaciones.",
+      "tags": [
+        "pr",
+        "mercado"
+      ],
+      "status": "abierto",
+      "updated": "2026-09-01",
+      "file": "pr-2-mercado-cadencia.md",
+      "links": [
+        "cron",
+        "mercado",
+        "seguimiento",
+        "coste-tokens"
+      ]
+    },
+    {
+      "id": "pr-3-orbe-vivo",
+      "title": "\"PR #3 — orbe vivo\"",
+      "summary": "El orbe del HUD no reaccionaba al pensar ni al hablar; añade estado thinking + hudCore().",
+      "tags": [
+        "pr",
+        "frontend"
+      ],
+      "status": "abierto",
+      "updated": "2026-09-01",
+      "file": "pr-3-orbe-vivo.md",
+      "links": [
+        "orbe",
+        "hud"
+      ]
+    },
+    {
+      "id": "pr-4-bugs-varios",
+      "title": "\"PR #4 — bugs varios\"",
+      "summary": "Recordatorios duplicados, Telegram >4096, watchdog frágil, timeouts sin capturar.",
+      "tags": [
+        "pr",
+        "ops"
+      ],
+      "status": "abierto",
+      "updated": "2026-09-01",
+      "file": "pr-4-bugs-varios.md",
+      "links": [
+        "watchdog",
+        "notificaciones",
+        "seguimiento"
+      ]
+    },
+    {
+      "id": "pr-5-telegram-ollama-jobs",
+      "title": "\"PR #5 — Telegram→Ollama + jobs\"",
+      "summary": "Telegram cae a Ollama sin tokens; el bridge guarda los últimos 8 jobs en vez de 1.",
+      "tags": [
+        "pr",
+        "llm"
+      ],
+      "status": "abierto",
+      "updated": "2026-09-01",
+      "file": "pr-5-telegram-ollama-jobs.md",
+      "links": [
+        "pr-1-ollama-fallback",
+        "ideas-pendientes",
+        "telegram",
+        "ollama-fallback",
+        "bridge"
+      ]
+    },
+    {
+      "id": "pr-6-hardening",
+      "title": "\"PR #6 — endurecimiento\"",
+      "summary": "Lock de sesión Claude, agente de dispositivo más cerrado, vault-refresh sin gasto extra.",
+      "tags": [
+        "pr",
+        "ops"
+      ],
+      "status": "abierto",
+      "updated": "2026-09-01",
+      "file": "pr-6-hardening.md",
+      "links": [
+        "bridge",
+        "telegram",
+        "sesion-claude",
+        "device-agent",
+        "vault-refresh"
+      ]
+    },
+    {
+      "id": "seguimiento",
+      "title": "Seguimiento de watchlist",
+      "summary": "agents/seguimiento.py — indicadores + SQLite; LLM solo si un ticker dispara señal.",
+      "tags": [
+        "subsistema",
+        "mercado"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "seguimiento.md",
+      "links": [
+        "mercado",
+        "coste-tokens",
+        "cron"
+      ]
+    },
+    {
+      "id": "sesion-claude",
+      "title": "Sesión de Claude compartida",
+      "summary": "bridge y telegram comparten un claude -p --resume <session_id>; session_lock.py lo serializa.",
+      "tags": [
+        "subsistema",
+        "llm"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "sesion-claude.md",
+      "links": [
+        "bridge",
+        "telegram",
+        "pr-6-hardening"
+      ]
+    },
+    {
+      "id": "telegram",
+      "title": "Bot de Telegram",
+      "summary": "bridge/telegram_bot.py — long-poll; cada mensaje va a claude -p, responde por voz o texto.",
+      "tags": [
+        "subsistema",
+        "red"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "telegram.md",
+      "links": [
+        "bridge",
+        "sesion-claude",
+        "pr-5-telegram-ollama-jobs",
+        "ollama-fallback",
+        "notificaciones"
+      ]
+    },
+    {
+      "id": "vault-refresh",
+      "title": "vault-refresh",
+      "summary": "bin/vault-refresh regenera vault/outputs/*.md con skills de voz antes del brief.",
+      "tags": [
+        "subsistema",
+        "ops"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "vault-refresh.md",
+      "links": [
+        "hud",
+        "pr-6-hardening",
+        "cron",
+        "coste-tokens",
+        "wiki-como-funciona"
+      ]
+    },
+    {
+      "id": "watchdog",
+      "title": "Watchdog y recordatorios",
+      "summary": "bin/watchdog vigila servicios; bin/check-reminders avisa de recordatorios próximos.",
+      "tags": [
+        "subsistema",
+        "ops"
+      ],
+      "status": "activo",
+      "updated": "2026-09-01",
+      "file": "watchdog.md",
+      "links": [
+        "notificaciones",
+        "pr-4-bugs-varios",
+        "cron"
+      ]
+    },
+    {
+      "id": "wiki-como-funciona",
+      "title": "Cómo funciona este wiki",
+      "summary": "Convenciones del wiki y qué hace bin/wiki-graph (grafo + índice + chequeos).",
+      "tags": [
+        "meta"
+      ],
+      "status": "vivo",
+      "updated": "2026-09-01",
+      "file": "wiki-como-funciona.md",
+      "links": [
+        "moc",
+        "cron",
+        "coste-tokens"
+      ]
+    }
+  ],
+  "edges": [
+    [
+      "bridge",
+      "device-agent"
+    ],
+    [
+      "bridge",
+      "hud"
+    ],
+    [
+      "bridge",
+      "notificaciones"
+    ],
+    [
+      "bridge",
+      "ollama-fallback"
+    ],
+    [
+      "bridge",
+      "pr-5-telegram-ollama-jobs"
+    ],
+    [
+      "bridge",
+      "sesion-claude"
+    ],
+    [
+      "bridge",
+      "telegram"
+    ],
+    [
+      "coste-tokens",
+      "mercado"
+    ],
+    [
+      "coste-tokens",
+      "ollama-fallback"
+    ],
+    [
+      "coste-tokens",
+      "pr-2-mercado-cadencia"
+    ],
+    [
+      "coste-tokens",
+      "pr-6-hardening"
+    ],
+    [
+      "coste-tokens",
+      "seguimiento"
+    ],
+    [
+      "coste-tokens",
+      "vault-refresh"
+    ],
+    [
+      "cron",
+      "ideas-pendientes"
+    ],
+    [
+      "cron",
+      "mercado"
+    ],
+    [
+      "cron",
+      "pr-2-mercado-cadencia"
+    ],
+    [
+      "cron",
+      "seguimiento"
+    ],
+    [
+      "cron",
+      "vault-refresh"
+    ],
+    [
+      "cron",
+      "watchdog"
+    ],
+    [
+      "device-agent",
+      "bridge"
+    ],
+    [
+      "device-agent",
+      "pr-6-hardening"
+    ],
+    [
+      "hud",
+      "bridge"
+    ],
+    [
+      "hud",
+      "orbe"
+    ],
+    [
+      "hud",
+      "pr-3-orbe-vivo"
+    ],
+    [
+      "ideas-pendientes",
+      "cron"
+    ],
+    [
+      "ideas-pendientes",
+      "device-agent"
+    ],
+    [
+      "ideas-pendientes",
+      "ollama-fallback"
+    ],
+    [
+      "ideas-pendientes",
+      "orbe"
+    ],
+    [
+      "ideas-pendientes",
+      "pr-1-ollama-fallback"
+    ],
+    [
+      "ideas-pendientes",
+      "pr-2-mercado-cadencia"
+    ],
+    [
+      "ideas-pendientes",
+      "pr-5-telegram-ollama-jobs"
+    ],
+    [
+      "ideas-pendientes",
+      "sesion-claude"
+    ],
+    [
+      "ideas-pendientes",
+      "wiki-como-funciona"
+    ],
+    [
+      "mercado",
+      "coste-tokens"
+    ],
+    [
+      "mercado",
+      "cron"
+    ],
+    [
+      "mercado",
+      "pr-2-mercado-cadencia"
+    ],
+    [
+      "mercado",
+      "seguimiento"
+    ],
+    [
+      "moc",
+      "bridge"
+    ],
+    [
+      "moc",
+      "coste-tokens"
+    ],
+    [
+      "moc",
+      "cron"
+    ],
+    [
+      "moc",
+      "device-agent"
+    ],
+    [
+      "moc",
+      "hud"
+    ],
+    [
+      "moc",
+      "ideas-pendientes"
+    ],
+    [
+      "moc",
+      "mercado"
+    ],
+    [
+      "moc",
+      "moc"
+    ],
+    [
+      "moc",
+      "notificaciones"
+    ],
+    [
+      "moc",
+      "ollama-fallback"
+    ],
+    [
+      "moc",
+      "orbe"
+    ],
+    [
+      "moc",
+      "pr-1-ollama-fallback"
+    ],
+    [
+      "moc",
+      "pr-2-mercado-cadencia"
+    ],
+    [
+      "moc",
+      "pr-3-orbe-vivo"
+    ],
+    [
+      "moc",
+      "pr-4-bugs-varios"
+    ],
+    [
+      "moc",
+      "pr-5-telegram-ollama-jobs"
+    ],
+    [
+      "moc",
+      "pr-6-hardening"
+    ],
+    [
+      "moc",
+      "seguimiento"
+    ],
+    [
+      "moc",
+      "sesion-claude"
+    ],
+    [
+      "moc",
+      "telegram"
+    ],
+    [
+      "moc",
+      "vault-refresh"
+    ],
+    [
+      "moc",
+      "watchdog"
+    ],
+    [
+      "moc",
+      "wiki-como-funciona"
+    ],
+    [
+      "notificaciones",
+      "cron"
+    ],
+    [
+      "notificaciones",
+      "mercado"
+    ],
+    [
+      "notificaciones",
+      "pr-2-mercado-cadencia"
+    ],
+    [
+      "notificaciones",
+      "pr-4-bugs-varios"
+    ],
+    [
+      "notificaciones",
+      "seguimiento"
+    ],
+    [
+      "notificaciones",
+      "telegram"
+    ],
+    [
+      "notificaciones",
+      "watchdog"
+    ],
+    [
+      "ollama-fallback",
+      "bridge"
+    ],
+    [
+      "ollama-fallback",
+      "coste-tokens"
+    ],
+    [
+      "ollama-fallback",
+      "ideas-pendientes"
+    ],
+    [
+      "ollama-fallback",
+      "pr-1-ollama-fallback"
+    ],
+    [
+      "ollama-fallback",
+      "pr-5-telegram-ollama-jobs"
+    ],
+    [
+      "ollama-fallback",
+      "telegram"
+    ],
+    [
+      "orbe",
+      "hud"
+    ],
+    [
+      "orbe",
+      "pr-3-orbe-vivo"
+    ],
+    [
+      "pr-1-ollama-fallback",
+      "bridge"
+    ],
+    [
+      "pr-1-ollama-fallback",
+      "ollama-fallback"
+    ],
+    [
+      "pr-2-mercado-cadencia",
+      "coste-tokens"
+    ],
+    [
+      "pr-2-mercado-cadencia",
+      "cron"
+    ],
+    [
+      "pr-2-mercado-cadencia",
+      "mercado"
+    ],
+    [
+      "pr-2-mercado-cadencia",
+      "seguimiento"
+    ],
+    [
+      "pr-3-orbe-vivo",
+      "hud"
+    ],
+    [
+      "pr-3-orbe-vivo",
+      "orbe"
+    ],
+    [
+      "pr-4-bugs-varios",
+      "notificaciones"
+    ],
+    [
+      "pr-4-bugs-varios",
+      "seguimiento"
+    ],
+    [
+      "pr-4-bugs-varios",
+      "watchdog"
+    ],
+    [
+      "pr-5-telegram-ollama-jobs",
+      "bridge"
+    ],
+    [
+      "pr-5-telegram-ollama-jobs",
+      "ideas-pendientes"
+    ],
+    [
+      "pr-5-telegram-ollama-jobs",
+      "ollama-fallback"
+    ],
+    [
+      "pr-5-telegram-ollama-jobs",
+      "pr-1-ollama-fallback"
+    ],
+    [
+      "pr-5-telegram-ollama-jobs",
+      "telegram"
+    ],
+    [
+      "pr-6-hardening",
+      "bridge"
+    ],
+    [
+      "pr-6-hardening",
+      "device-agent"
+    ],
+    [
+      "pr-6-hardening",
+      "sesion-claude"
+    ],
+    [
+      "pr-6-hardening",
+      "telegram"
+    ],
+    [
+      "pr-6-hardening",
+      "vault-refresh"
+    ],
+    [
+      "seguimiento",
+      "coste-tokens"
+    ],
+    [
+      "seguimiento",
+      "cron"
+    ],
+    [
+      "seguimiento",
+      "mercado"
+    ],
+    [
+      "sesion-claude",
+      "bridge"
+    ],
+    [
+      "sesion-claude",
+      "pr-6-hardening"
+    ],
+    [
+      "sesion-claude",
+      "telegram"
+    ],
+    [
+      "telegram",
+      "bridge"
+    ],
+    [
+      "telegram",
+      "notificaciones"
+    ],
+    [
+      "telegram",
+      "ollama-fallback"
+    ],
+    [
+      "telegram",
+      "pr-5-telegram-ollama-jobs"
+    ],
+    [
+      "telegram",
+      "sesion-claude"
+    ],
+    [
+      "vault-refresh",
+      "coste-tokens"
+    ],
+    [
+      "vault-refresh",
+      "cron"
+    ],
+    [
+      "vault-refresh",
+      "hud"
+    ],
+    [
+      "vault-refresh",
+      "pr-6-hardening"
+    ],
+    [
+      "vault-refresh",
+      "wiki-como-funciona"
+    ],
+    [
+      "watchdog",
+      "cron"
+    ],
+    [
+      "watchdog",
+      "notificaciones"
+    ],
+    [
+      "watchdog",
+      "pr-4-bugs-varios"
+    ],
+    [
+      "wiki-como-funciona",
+      "coste-tokens"
+    ],
+    [
+      "wiki-como-funciona",
+      "cron"
+    ],
+    [
+      "wiki-como-funciona",
+      "moc"
+    ]
+  ]
+}

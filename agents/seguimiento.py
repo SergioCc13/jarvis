@@ -269,8 +269,10 @@ def llm_digest(today, triggered):
         s = t["snap"]
         def f(x, suf="%"):
             return f"{x:+.1f}{suf}" if isinstance(x, (int, float)) else "n/d"
+        price_str = (f"{s['price']:.2f} {s['currency']}"
+                     if isinstance(s.get("price"), (int, float)) else "n/d")
         lines.append(
-            f"- {s['symbol']} ({s['name']}): {s['price']:.2f} {s['currency']} | "
+            f"- {s['symbol']} ({s['name']}): {price_str} | "
             f"1d {f(s.get('chg_1d'))}, 5d {f(s.get('chg_5d'))}, 20d {f(s.get('chg_20d'))} | "
             f"RSI {s.get('rsi_14') and round(s['rsi_14'])} | "
             f"vs máx52s {f(s.get('dist_high'))}, vs mín52s {f(s.get('dist_low'))} | "

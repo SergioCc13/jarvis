@@ -12,11 +12,20 @@ llamada a `claude -p`, cada rol ve el trabajo de los anteriores):
   6. Gestor de riesgo / cartera        — veredicto FINAL en el formato del email
 
 Al terminar todos, un rol de cartera escribe la visión de conjunto que
-encabeza el informe. Todo se ensambla en el email diario "Jarvis: Mercado".
+encabeza el informe. Todo se ensambla en el email "Jarvis: Mercado".
+
+Este es el modo COMPLETO (semanal, lunes). El informe rápido diario de 1 sola
+llamada es `bin/analiza --rapido`.
+
+Fechas: la línea "Próximo evento relevante" NO la inventa el LLM — sale de
+agents/calendar_data.py (calendario oficial de la Fed + Yahoo Finance) y se
+fuerza en el bloque final. El email adjunta el gráfico de puntuaciones
+(agents/charts.py, 0 tokens).
 
 Coste: ~6 llamadas por activo + 1. Con 21 activos ≈ 127 llamadas / ejecución.
 
-Stdlib pura. Reutiliza agents/trading.py (datos) y agents/seguimiento.py (indicadores).
+Stdlib pura. Reutiliza agents/trading.py (datos), agents/seguimiento.py
+(indicadores), agents/calendar_data.py (fechas) y agents/charts.py (gráfico).
 
 Uso:
   python3 agents/analistas.py                 # watchlist completa, imprime informe
@@ -37,9 +46,18 @@ sys.path.insert(0, os.path.join(REPO, "bridge"))
 
 from trading import analyze as raw_analyze          # noqa: E402
 from seguimiento import build_snapshot              # noqa: E402
+try:
+    from calendar_data import next_fomc_meeting, company_dates  # noqa: E402
+except Exception:                                                # pragma: no cover
+    def next_fomc_meeting(*_a, **_k):
+        return ""
+
+    def company_dates(*_a, **_k):
+        return ""
 
 WATCHLIST = os.path.join(HERE, "watchlist.txt")
 VAULT_MD  = os.path.join(REPO, "vault", "outputs", "mercado.md")
+SCORES_PNG = os.path.join("/tmp", "jarvis-mercado-scores.png")
 
 CLAUDE_TIMEOUT = int(os.environ.get("JARVIS_AGENTS_TIMEOUT", "200"))
 
@@ -125,6 +143,46 @@ ROLES = [
 ]
 
 
+_FOMC_CACHE = None
+
+
+def _fomc_line() -> str:
+    """Next FOMC meeting — computed once per run (hardcoded official schedule)."""
+    global _FOMC_CACHE
+    if _FOMC_CACHE is None:
+        try:
+            _FOMC_CACHE = next_fomc_meeting() or ""
+        except Exception:
+            _FOMC_CACHE = ""
+    return _FOMC_CACHE
+
+
+def _verified_event(cdates: str, fomc: str) -> str:
+    """The real 'próximo evento' line to force into the block: a stock's own
+    earnings/dividend date wins; otherwise the macro FOMC date; else ''."""
+    if cdates:
+        return cdates.split(": ", 1)[1] if ": " in cdates else cdates
+    if fomc:
+        return fomc
+    return ""
+
+
+def _force_event_line(block: str, event: str) -> str:
+    """Replace the '- Próximo evento relevante:' line with a verified date."""
+    if not event:
+        return block
+    lines, done = [], False
+    for ln in block.splitlines():
+        if ln.lower().lstrip("- ").startswith("próximo evento relevante"):
+            lines.append(f"- Próximo evento relevante: {event}")
+            done = True
+        else:
+            lines.append(ln)
+    if not done:
+        lines.append(f"- Próximo evento relevante: {event}")
+    return "\n".join(lines)
+
+
 def analyze_asset(symbol: str) -> dict:
     """Ejecuta la cadena completa de roles para un activo. Devuelve dict con el bloque final."""
     try:
@@ -144,11 +202,22 @@ def analyze_asset(symbol: str) -> dict:
     except Exception as e:
         ind = f"(sin indicadores: {e})"
 
+    try:
+        cdates = company_dates(symbol) or ""
+    except Exception:
+        cdates = ""
+    fomc = _fomc_line()
+    fechas = "\n".join(x for x in (cdates, fomc) if x) or (
+        "(sin fechas verificadas para este activo — NO inventes ninguna)"
+    )
+
     today = date.today().isoformat()
     dossier = (
         f"ACTIVO: {symbol}\nFECHA: {today}\n\n"
         f"DATOS DE MERCADO / CONTEXTO DE NOTICIAS:\n{raw}\n\n"
-        f"INDICADORES:\n{ind}\n"
+        f"INDICADORES:\n{ind}\n\n"
+        f"FECHAS VERIFICADAS (fuentes reales: calendario oficial de la Fed + Yahoo "
+        f"Finance; usa SOLO estas fechas, no inventes otras):\n{fechas}\n"
     )
 
     outputs = {}
@@ -175,6 +244,8 @@ def analyze_asset(symbol: str) -> dict:
             f"- Justificación: {FAIL_MARKER}; lectura del trader: "
             f"{outputs.get('trader', 'n/d')[:240]}"
         )
+
+    final = _force_event_line(final, _verified_event(cdates, fomc))
     return {"symbol": symbol, "block": final, "debate": outputs}
 
 
@@ -236,10 +307,27 @@ def parse_report(path):
     return blocks
 
 
+def _render_scores_chart(report):
+    """PNG con el ranking de puntuaciones 0-100 (0 tokens). None si no se puede
+    (matplotlib no instalado, o ninguna puntuación parseable)."""
+    try:
+        import charts  # agents/charts.py
+        entries = charts.parse_analysis(report)
+        if not entries:
+            return None
+        return charts.render_scores(entries, SCORES_PNG)
+    except Exception as e:
+        print(f"  · gráfico de puntuaciones no generado: {e}")
+        return None
+
+
 def dispatch_report(report, today, n_assets):
     import notify as _n  # bridge/notify.py
-    # Email: informe completo. Telegram: solo la visión de cartera (límite 4096).
-    res = _n.dispatch(report, channels=["email"], subject=f"Jarvis: Mercado {today}")
+    # Email: informe completo + gráfico de puntuaciones. Telegram: solo la visión
+    # de cartera (límite 4096).
+    chart = _render_scores_chart(report)
+    res = _n.dispatch(report, channels=["email"], subject=f"Jarvis: Mercado {today}",
+                      attachments=[chart] if chart else None)
     for ch, (ok, detail) in res.items():
         print(f"  {'✓' if ok else '✗'} {ch}: {detail}")
     tg = report.split("### ", 1)[0].strip() + \
