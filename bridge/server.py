@@ -270,30 +270,72 @@ OLLAMA_SYSTEM = (
     "usuario lo pida."
 )
 _ollama_history = []  # persists for the session
+# First call loads the model into RAM (a 7B on CPU can take minutes); the old
+# 120 s ceiling made that show up as a silent timeout. keep_alive stops Ollama
+# from evicting the model between messages.
+OLLAMA_TIMEOUT = int(os.environ.get("JARVIS_OLLAMA_TIMEOUT", "300"))
+OLLAMA_KEEP_ALIVE = os.environ.get("JARVIS_OLLAMA_KEEP_ALIVE", "30m")
 
 
-def _pick_ollama():
-    """Return first reachable Ollama IP, or None."""
-    for ip in _OLLAMA_IPS:
-        if _reachable(ip, port=11434):
-            return ip
-    return None
+def _ollama_tags(ip):
+    """Return the set of model names installed on an Ollama backend (empty on failure)."""
+    try:
+        with urllib.request.urlopen(f"http://{ip}:11434/api/tags", timeout=5) as resp:
+            data = json.loads(resp.read())
+        return {m["name"] for m in data.get("models", [])}
+    except Exception:
+        return set()
 
 
-def _ask_ollama(ip, text):
+def _ollama_model_for(ip):
+    """Pick a model that actually exists on this backend.
+
+    A reachable port does not mean the configured model was ever pulled; asking
+    for a missing model just returns an HTTP 404 that used to surface as a dead
+    fallback. Prefer the configured tag, then any same-family tag, then anything.
+    Returns None only when /api/tags succeeded and the backend has no models.
+    """
+    want = OLLAMA_MODEL_LOCAL if ip in ("127.0.0.1", "localhost") else OLLAMA_MODEL
+    tags = _ollama_tags(ip)
+    if not tags:
+        return want  # tags endpoint failed; try the configured model blindly
+    if want in tags:
+        return want
+    base = want.split(":", 1)[0]
+    family = sorted(t for t in tags if t.split(":", 1)[0] == base)
+    if family:
+        return family[0]
+    return sorted(tags)[0]
+
+
+def _ask_ollama(ip, text, model):
     global _ollama_history
-    model = OLLAMA_MODEL_LOCAL if ip in ("127.0.0.1", "localhost") else OLLAMA_MODEL
     _ollama_history.append({"role": "user", "content": text})
     messages = [{"role": "system", "content": OLLAMA_SYSTEM}] + _ollama_history[-30:]
-    payload = json.dumps({"model": model, "messages": messages, "stream": False}).encode()
+    payload = json.dumps({
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "keep_alive": OLLAMA_KEEP_ALIVE,
+    }).encode()
     req = urllib.request.Request(
         f"http://{ip}:11434/api/chat",
         data=payload,
         headers={"Content-Type": "application/json"},
     )
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        data = json.loads(resp.read())
-    reply = data["message"]["content"].strip()
+    try:
+        with urllib.request.urlopen(req, timeout=OLLAMA_TIMEOUT) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")[:300]
+        raise RuntimeError(f"ollama {ip} HTTP {e.code}: {detail}") from None
+    except Exception as e:
+        raise RuntimeError(f"ollama {ip} unreachable: {type(e).__name__}: {e}") from None
+    if data.get("error"):
+        raise RuntimeError(f"ollama {ip}: {data['error']}")
+    reply = (data.get("message") or {}).get("content", "").strip()
+    if not reply:
+        raise RuntimeError(f"ollama {ip}: empty response ({json.dumps(data)[:200]})")
     _ollama_history.append({"role": "assistant", "content": reply})
     return reply
 
@@ -319,6 +361,46 @@ def ask_claude(text):
 _ollama_active = False  # track whether we already notified about the switch
 
 
+def _ollama_fallback(text, claude_err):
+    """Walk every configured Ollama backend and return the first real reply.
+
+    The old code stopped at the first backend whose port was open and never
+    tried the next one, so a reachable-but-broken backend (missing model, OOM)
+    killed the whole fallback. Here every backend gets a turn and, if they all
+    fail, the raised error names each failure instead of a bare 502.
+    """
+    global _ollama_active
+    tried = []
+    for ip in _OLLAMA_IPS:
+        if not _reachable(ip, port=11434):
+            tried.append(f"{ip}: port 11434 closed")
+            continue
+        model = _ollama_model_for(ip)
+        if not model:
+            tried.append(f"{ip}: no model installed (ollama pull {OLLAMA_MODEL})")
+            continue
+        where = "Pi" if ip in ("127.0.0.1", "localhost") else ip
+        sys.stderr.write(
+            f"[bridge] Claude failed ({type(claude_err).__name__}: {claude_err}); "
+            f"trying Ollama ({model}) on {ip}\n"
+        )
+        if not _ollama_active:
+            _ollama_active = True
+            msg = f"Claude no disponible. Usando Ollama ({model}) en {where}."
+            _notify_async("⚠️ " + msg)
+            _push_event({"type": "notice", "text": "⚠️ " + msg})
+        try:
+            return _ask_ollama(ip, text, model)
+        except Exception as e:
+            sys.stderr.write(f"[bridge] Ollama {ip} failed: {e}\n")
+            tried.append(str(e))
+            continue
+    raise RuntimeError(
+        "Claude failed and no Ollama backend answered — "
+        + " | ".join(tried or ["JARVIS_OLLAMA_BACKENDS is empty"])
+    )
+
+
 def ask(text):
     """Try Claude first; fall back to Ollama if Claude fails."""
     global _ollama_active
@@ -330,19 +412,13 @@ def ask(text):
             _notify_async("✅ " + msg)
             _push_event({"type": "notice", "text": "✅ " + msg})
         return reply
-    except Exception as e:
-        ollama_ip = _pick_ollama()
-        if ollama_ip:
-            active_model = OLLAMA_MODEL_LOCAL if ollama_ip in ("127.0.0.1", "localhost") else OLLAMA_MODEL
-            sys.stderr.write(f"[bridge] Claude failed ({type(e).__name__}), falling back to Ollama ({active_model}) on {ollama_ip}\n")
-            if not _ollama_active:
-                _ollama_active = True
-                where = "Pi" if ollama_ip in ("127.0.0.1", "localhost") else ollama_ip
-                msg = f"Claude no disponible. Usando Ollama ({active_model}) en {where}."
-                _notify_async("⚠️ " + msg)
-                _push_event({"type": "notice", "text": "⚠️ " + msg})
-            return _ask_ollama(ollama_ip, text)
-        raise
+    except Exception as claude_err:
+        try:
+            return _ollama_fallback(text, claude_err)
+        except Exception as fb_err:
+            sys.stderr.write(f"[bridge] fallback exhausted: {fb_err}\n")
+            _push_event({"type": "notice", "text": "❌ " + str(fb_err)})
+            raise
 
 
 def synthesize(text):
