@@ -64,7 +64,14 @@ def send_typing(chat_id):
 
 
 def send_text(chat_id, text):
-    _tg_post("sendMessage", {"chat_id": chat_id, "text": text})
+    # Markdown so **negrita**, _cursiva_ y `código` se rendericen de verdad
+    # en vez de mostrarse con los símbolos literales. Si el texto tiene algo
+    # que rompe el parser de Telegram (asterisco suelto, etc.), reintenta en
+    # texto plano en vez de perder el mensaje.
+    try:
+        _tg_post("sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"})
+    except urllib.error.HTTPError:
+        _tg_post("sendMessage", {"chat_id": chat_id, "text": text})
 
 
 def send_voice(chat_id, mp3_bytes):

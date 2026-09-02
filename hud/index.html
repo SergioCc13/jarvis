@@ -1240,9 +1240,14 @@ function togglePanel(id){
 }
 
 function restorePanels(){
+  // Default to hidden — only the chat/orb matters at a glance. Each panel
+  // stays hidden until you tap its − / + to reveal it, then remembers your
+  // choice; explicitly saved '0' (you showed it before) keeps it shown.
   ['panel-habitos','panel-skills','panel-agenda','panel-feed'].forEach(id=>{
     try{
-      if(localStorage.getItem('panel_min_'+id)==='1'){
+      const saved = localStorage.getItem('panel_min_'+id);
+      const minimized = saved === null ? true : saved === '1';
+      if(minimized){
         document.getElementById(id).classList.add('minimized');
         const btn = document.getElementById('min-'+id);
         if(btn) btn.textContent = '+';
