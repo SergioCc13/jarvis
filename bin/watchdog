@@ -13,6 +13,7 @@ import json
 import os
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
@@ -52,16 +53,23 @@ def save_state(state):
 
 def notify(message, env):
     script = os.path.join(BRIDGE_DIR, "notify.py")
-    subprocess.run(
-        [sys.executable, script, "--no-voice", message],
-        env=env, timeout=15,
-    )
+    try:
+        subprocess.run(
+            [sys.executable, script, "--no-voice", message],
+            env=env, timeout=20,
+        )
+    except (subprocess.TimeoutExpired, OSError) as e:
+        # a slow notify.py must not abort main() before save_state() runs,
+        # or the next run re-alerts for everything
+        print(f"[watchdog] notify.py falló: {e}")
 
 
 def check_bridge():
     try:
         with urllib.request.urlopen(BRIDGE_URL, timeout=5) as resp:
             return resp.status < 500
+    except urllib.error.HTTPError as e:
+        return e.code < 500  # server answered — it's up, just not 2xx
     except Exception:
         return False
 

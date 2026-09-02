@@ -83,18 +83,46 @@ def _tg_url(method: str) -> str:
     return f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/{method}"
 
 
-def send_telegram(message: str) -> tuple[bool, str]:
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return False, "JARVIS_TELEGRAM_TOKEN or JARVIS_TELEGRAM_CHAT_ID not set"
-    payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": message}).encode()
+_TG_LIMIT = 4000  # Telegram hard-limits sendMessage at 4096 chars; leave margin
+
+
+def _tg_chunks(text: str) -> list[str]:
+    """Split on line boundaries so no chunk exceeds the Telegram limit."""
+    if len(text) <= _TG_LIMIT:
+        return [text]
+    out, buf = [], ""
+    for line in text.split("\n"):
+        while len(line) > _TG_LIMIT:                 # a single monster line
+            out.append(line[:_TG_LIMIT]); line = line[_TG_LIMIT:]
+        if buf and len(buf) + len(line) + 1 > _TG_LIMIT:
+            out.append(buf); buf = line
+        else:
+            buf = f"{buf}\n{line}" if buf else line
+    if buf:
+        out.append(buf)
+    return out
+
+
+def _tg_send_one(text: str):
+    payload = json.dumps({"chat_id": TELEGRAM_CHAT_ID, "text": text}).encode()
     req = urllib.request.Request(
         _tg_url("sendMessage"), data=payload,
         headers={"Content-Type": "application/json"},
         method="POST",
     )
+    _urlopen(req, timeout=10)
+
+
+def send_telegram(message: str) -> tuple[bool, str]:
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return False, "JARVIS_TELEGRAM_TOKEN or JARVIS_TELEGRAM_CHAT_ID not set"
+    chunks = _tg_chunks(message)
     try:
-        _urlopen(req, timeout=10)
-        return True, "ok"
+        for c in chunks:
+            _tg_send_one(c)
+        return True, (f"ok ({len(chunks)} msgs)" if len(chunks) > 1 else "ok")
+    except urllib.error.HTTPError as e:
+        return False, f"Telegram HTTP {e.code}: {e.read().decode(errors='replace')[:200]}"
     except Exception as e:
         return False, str(e)
 
