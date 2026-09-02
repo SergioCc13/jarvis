@@ -19,6 +19,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import ollama_fallback  # noqa: E402  (bridge/ollama_fallback.py)
+
 TOKEN          = os.environ.get("JARVIS_TELEGRAM_TOKEN", "")
 ALLOWED_ID     = int(os.environ.get("JARVIS_TELEGRAM_CHAT_ID", "0") or 0)
 KOKORO_URL     = os.environ.get("VOICEMODE_TTS_URL", "http://127.0.0.1:8880/v1/audio/speech")
@@ -94,8 +97,29 @@ def _save_cfg(cfg):
         json.dump(cfg, f, indent=2)
 
 
+# Frases que `claude -p` emite por stdout cuando NO ha respondido (límite de
+# sesión/uso). Mismo criterio que agents/analistas.py.
+_LIMIT_MARKERS = ("session limit", "usage limit", "hit your limit", "quota",
+                  "rate limit", "resets ", "please try again later")
+
+
+def _ollama_reply(message, why):
+    """Try the offline Ollama fallback. Returns a formatted reply or None."""
+    if not ollama_fallback.available():
+        return None
+    try:
+        reply, model, ip = ollama_fallback.ask(message)
+    except Exception as e:
+        print(f"[tg] Ollama también falló: {e}")
+        return None
+    where = "Pi" if ip in ("127.0.0.1", "localhost") else ip
+    print(f"[tg] Claude no disponible ({why}) → Ollama {model} @ {ip}")
+    return f"⚠️ Claude no disponible. Uso Ollama ({model}) en {where}.\n\n{reply}"
+
+
 def ask_claude(message):
-    """Pass message to claude -p using the shared bridge session."""
+    """Pass message to claude -p using the shared bridge session.
+    Falls back to a local Ollama backend if claude is unavailable."""
     cfg = _load_cfg()
     session_id = cfg.get("session_id")
     started    = cfg.get("session_started", False)
@@ -106,11 +130,19 @@ def ask_claude(message):
     elif session_id:
         args += ["--session-id", session_id]
 
-    result = subprocess.run(
-        args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=120,
-    )
-    if result.returncode != 0:
-        return f"(error claude: {result.stderr[-300:]})"
+    try:
+        result = subprocess.run(
+            args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=120,
+        )
+    except subprocess.TimeoutExpired:
+        return _ollama_reply(message, "timeout") or "(claude: timeout, y sin Ollama disponible)"
+    except OSError as e:
+        return _ollama_reply(message, f"no se pudo lanzar claude: {e}") or f"(error claude: {e})"
+
+    low = f"{result.stdout}\n{result.stderr}".lower()
+    if result.returncode != 0 or any(m in low for m in _LIMIT_MARKERS):
+        why = (result.stderr or result.stdout or "código " + str(result.returncode))[-200:]
+        return _ollama_reply(message, why) or f"(error claude: {result.stderr[-300:] or result.stdout[-300:]})"
 
     try:
         data  = json.loads(result.stdout)
@@ -118,12 +150,15 @@ def ask_claude(message):
     except Exception:
         reply = result.stdout.strip()
 
+    if not reply:
+        return _ollama_reply(message, "respuesta vacía") or "(sin respuesta)"
+
     # Mark session as started so future calls use --resume
     if session_id and not started and reply:
         cfg["session_started"] = True
         _save_cfg(cfg)
 
-    return reply or "(sin respuesta)"
+    return reply
 
 
 def synthesize(text):

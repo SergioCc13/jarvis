@@ -137,25 +137,38 @@ _IMG_EXT = {"image/png": ".png", "image/webp": ".webp", "image/gif": ".gif",
 # server had finished. Now they kick off a background job and return
 # immediately; the client polls /chat/result until it's done, which survives
 # backgrounding/reloading (fire the message, come back later, like Telegram).
+# A single global slot dropped the earlier reply whenever a second message was
+# sent before the first finished (the poller for the first then got a 404 —
+# "la respuesta se perdió"). Keep the last few jobs, keyed by id.
 _job_lock = threading.Lock()
-_job = {"id": None, "status": "idle", "reply": None, "error": None}
+_jobs: dict[str, dict] = {}
+_JOBS_MAX = 8
+
+
+def _job_snapshot(job_id):
+    with _job_lock:
+        j = _jobs.get(job_id)
+        return dict(j) if j else None
 
 
 def _start_chat_job(prompt):
     job_id = uuid.uuid4().hex
     with _job_lock:
-        _job.update({"id": job_id, "status": "pending", "reply": None, "error": None})
+        _jobs[job_id] = {"id": job_id, "status": "pending", "reply": None,
+                         "error": None, "ts": time.time()}
+        while len(_jobs) > _JOBS_MAX:
+            _jobs.pop(min(_jobs, key=lambda k: _jobs[k]["ts"]), None)
 
     def worker():
         try:
             reply = ask(prompt)
             with _job_lock:
-                if _job["id"] == job_id:
-                    _job.update({"status": "done", "reply": reply})
+                if job_id in _jobs:
+                    _jobs[job_id].update({"status": "done", "reply": reply})
         except Exception as e:
             with _job_lock:
-                if _job["id"] == job_id:
-                    _job.update({"status": "error", "error": f"claude failed: {e}"})
+                if job_id in _jobs:
+                    _jobs[job_id].update({"status": "error", "error": f"claude failed: {e}"})
 
     threading.Thread(target=worker, daemon=True).start()
     return job_id
@@ -534,10 +547,10 @@ class Handler(BaseHTTPRequestHandler):
         if token != CONFIG["token"]:
             return self._send_json(401, {"error": "unauthorized"})
         job_id = (params.get("job_id") or [""])[0]
-        with _job_lock:
-            if not job_id or job_id != _job["id"]:
-                return self._send_json(404, {"status": "unknown"})
-            return self._send_json(200, dict(_job))
+        job = _job_snapshot(job_id)
+        if not job:
+            return self._send_json(404, {"status": "unknown"})
+        return self._send_json(200, job)
 
     def _handle_events(self):
         qs = self.path.split("?", 1)[1] if "?" in self.path else ""
