@@ -1411,6 +1411,10 @@ const BRIDGE_URL = (location.protocol === 'https:' && !location.port)
   : `${location.protocol}//${location.hostname}:8792`;
 const _token = () => window.__JARVIS_TOKEN || localStorage.getItem('jarvis_token') || '';
 
+// Clean up the mic on phone: cancel the speaker echo, suppress room noise,
+// level the gain. Big accuracy win for Whisper when the reply is playing.
+const MIC_CONSTRAINTS = { audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } };
+
 let _recording = false;
 let _mediaRecorder = null;
 let _audioChunks = [];
@@ -1632,14 +1636,14 @@ async function startVoice(){
   document.getElementById('voice-btn').classList.add('recording');
   _setChatState('listening');
   try{
-    const stream = await navigator.mediaDevices.getUserMedia({audio:true});
+    const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
     _mediaRecorder = new MediaRecorder(stream);
     _audioChunks = [];
     _mediaRecorder.ondataavailable = e => _audioChunks.push(e.data);
     _mediaRecorder.onstop = ()=>{ if(_vadCtx){ _vadCtx.close(); _vadCtx=null; } _sendVoice(); };
     _mediaRecorder.start();
 
-    // VAD: auto-stop after 1.5 s of silence following detected speech
+    // VAD: auto-stop after a short silence once speech has been heard
     _vadCtx = new (window.AudioContext||window.webkitAudioContext)();
     const src = _vadCtx.createMediaStreamSource(stream);
     const analyser = _vadCtx.createAnalyser();
@@ -1648,7 +1652,7 @@ async function startVoice(){
     const buf = new Uint8Array(analyser.frequencyBinCount);
     const btn = document.getElementById('voice-btn');
     const SPEECH_RMS = 12;     // threshold to consider as speech
-    const SILENCE_MS = 10000;  // ms of silence before auto-stop
+    const SILENCE_MS = 1400;   // ms of silence before auto-stop
     let speechSeen = false, silenceAt = null;
 
     function vad(){
@@ -1724,7 +1728,7 @@ async function initClapDetect(){
   const statusEl = document.getElementById('clap-status');
   if(!navigator.mediaDevices){ statusEl.title='Palmadas no disponibles (HTTP)'; return; }
   try{
-    const stream = await navigator.mediaDevices.getUserMedia({audio:true,video:false});
+    const stream = await navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS);
     const ctx = new (window.AudioContext||window.webkitAudioContext)();
     const src = ctx.createMediaStreamSource(stream);
     const analyser = ctx.createAnalyser();

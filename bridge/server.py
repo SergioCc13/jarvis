@@ -10,6 +10,7 @@ POST /register, and Jarvis (Claude) can list them with GET /devices.
 import json
 import os
 import queue
+import re
 import socket
 import subprocess
 import sys
@@ -248,18 +249,42 @@ def register_device(info):
 
 # ── audio / claude ───────────────────────────────────────────────────────────
 
+# Whisper transcription hints. Language stays Spanish (the user is understood
+# better that way); the prompt seeds the decoder with the proper nouns Jarvis
+# deals with so they aren't mangled ("Ragavan", "Cardmarket", device names…).
+STT_LANGUAGE = os.environ.get("JARVIS_STT_LANGUAGE", "es")
+STT_PROMPT = os.environ.get(
+    "JARVIS_STT_PROMPT",
+    "Conversación en español con Jarvis, el asistente. Puede mencionar: "
+    "Cardmarket, Scryfall, Magic, Lorcana, YuGiOh, Pokémon, Ragavan, "
+    "Tailscale, Telegram, watchlist, Bitcoin, Ethereum, Claude, Ollama.",
+)
+
+
+def _mp_field(boundary, name, value):
+    return (
+        f"--{boundary}\r\n"
+        f'Content-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'
+    ).encode()
+
+
 def transcribe(audio_bytes, content_type):
     backend = _pick_backend()
     stt_url = f"http://{backend}:2022/v1/audio/transcriptions"
     boundary = "----jarvisbridgeboundary"
     ext = "webm" if "webm" in content_type else "wav"
     body = (
-        f"--{boundary}\r\n"
-        'Content-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n'
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file"; filename="audio.{ext}"\r\n'
-        f"Content-Type: {content_type}\r\n\r\n"
-    ).encode() + audio_bytes + f"\r\n--{boundary}--\r\n".encode()
+        _mp_field(boundary, "model", "whisper-1")
+        + _mp_field(boundary, "language", STT_LANGUAGE)
+        + _mp_field(boundary, "prompt", STT_PROMPT)
+        + (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="file"; filename="audio.{ext}"\r\n'
+            f"Content-Type: {content_type}\r\n\r\n"
+        ).encode()
+        + audio_bytes
+        + f"\r\n--{boundary}--\r\n".encode()
+    )
     req = urllib.request.Request(
         stt_url,
         data=body,
@@ -528,6 +553,75 @@ def synthesize(text):
         return resp.read()
 
 
+# Prepended to the transcript on the voice path only (never /chat, which wants
+# full formatting). Kept in Spanish on purpose — the reply must stay Spanish.
+VOICE_PROMPT_PREFIX = (
+    "[Entrada por voz. Responde en español, en 1 o 2 frases cortas, con tono "
+    "natural de conversación hablada. Nada de markdown, listas, tablas ni "
+    "emojis. Si hace falta más detalle, resúmelo y di que lo amplías en el chat.]\n\n"
+)
+
+_URL_RE = re.compile(r"https?://\S+|www\.\S+")
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F000-\U0001FAFF"  # emoticons, symbols & pictographs, supplemental
+    "\U00002600-\U000027BF"  # misc symbols + dingbats
+    "\U00002190-\U000021FF"  # arrows
+    "\U00002B00-\U00002BFF"  # misc symbols and arrows
+    "\U0000FE0F"             # emoji variation selector
+    "]"
+)
+_SENT_SPLIT_RE = re.compile(r"(?<=[.!?…])\s+")
+
+
+def for_speech(text, max_sentences=3, max_chars=360):
+    """Turn Jarvis's reply into something Kokoro can read aloud cleanly:
+    no markdown symbols, no code, no URLs, no emojis, and not too long."""
+    if not text:
+        return ""
+    t = text.replace("\r", "")
+    # drop fenced code blocks entirely
+    t = re.sub(r"```.*?```", " (código) ", t, flags=re.DOTALL)
+    t = re.sub(r"~~~.*?~~~", " (código) ", t, flags=re.DOTALL)
+    # links [txt](url) -> txt ; images ![alt](url) -> alt
+    t = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", t)
+    # bare URLs
+    t = _URL_RE.sub("un enlace", t)
+    # inline code and emphasis markers
+    t = t.replace("`", "")
+    t = re.sub(r"\*\*([^*]+)\*\*", r"\1", t)
+    t = re.sub(r"__([^_]+)__", r"\1", t)
+    t = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", t)
+    t = re.sub(r"(?<!_)_([^_\n]+)_(?!_)", r"\1", t)
+    # headings, blockquotes, list bullets at line start
+    t = re.sub(r"^\s{0,3}#{1,6}\s*", "", t, flags=re.MULTILINE)
+    t = re.sub(r"^\s{0,3}>\s?", "", t, flags=re.MULTILINE)
+    t = re.sub(r"^\s{0,3}(?:[-*+]|\d+[.)])\s+", "", t, flags=re.MULTILINE)
+    # tables -> spoken separators
+    t = t.replace("|", ", ")
+    t = _EMOJI_RE.sub("", t)
+    # symbols Kokoro would spell out awkwardly in Spanish
+    for sym, word in (
+        ("€", " euros"), ("$", " dólares"), ("%", " por ciento"),
+        ("&", " y "), ("°", " grados"), ("~", " aproximadamente "),
+    ):
+        t = t.replace(sym, word)
+    # collapse whitespace / stray punctuation from the newline joins
+    t = re.sub(r"\s*\n\s*", ". ", t).strip()
+    t = re.sub(r"\s{2,}", " ", t)
+    t = re.sub(r"([:;,])\s*\.", r"\1", t)
+    t = re.sub(r"(\.\s*){2,}", ". ", t)
+    if not t:
+        return ""
+    sentences = _SENT_SPLIT_RE.split(t)
+    clipped = " ".join(sentences[:max_sentences]).strip()
+    if len(clipped) > max_chars:
+        clipped = clipped[:max_chars].rsplit(" ", 1)[0] + "…"
+    if clipped != t.strip():
+        clipped = clipped.rstrip(".…") + ". Te lo amplío en el chat."
+    return clipped
+
+
 class Handler(BaseHTTPRequestHandler):
     def _send_text(self, code, text):
         body = text.encode()
@@ -732,28 +826,39 @@ class Handler(BaseHTTPRequestHandler):
         audio_bytes = self.rfile.read(length)
         content_type = self.headers.get("Content-Type", "audio/webm")
 
+        t0 = time.perf_counter()
         try:
             transcript = transcribe(audio_bytes, content_type)
         except Exception as e:
             return self._send_text(502, f"stt failed: {e}")
+        t_stt = time.perf_counter()
 
         if not transcript or "[BLANK_AUDIO]" in transcript or "[SILENCIO]" in transcript.upper():
             reply = "No escuché nada, intenta de nuevo."
         else:
             try:
-                reply = ask(transcript)
+                reply = ask(VOICE_PROMPT_PREFIX + transcript)
             except Exception as e:
                 return self._send_text(502, f"claude failed: {e}")
+        t_llm = time.perf_counter()
 
+        # Hear a short, clean version; the full answer still lands in the chat.
+        spoken = for_speech(reply) or "Hecho."
         try:
-            audio = synthesize(reply)
+            audio = synthesize(spoken)
         except Exception as e:
             return self._send_text(502, f"tts failed: {e}")
+        t_tts = time.perf_counter()
+        sys.stderr.write(
+            f"[voice] stt={t_stt - t0:.1f}s llm={t_llm - t_stt:.1f}s "
+            f"tts={t_tts - t_llm:.1f}s | «{transcript[:60]}» -> {len(spoken)} chars\n"
+        )
 
+        x_reply = reply if len(reply) < 3500 else reply[:3500] + "…"
         self.send_response(200)
         self.send_header("Content-Type", "audio/mpeg")
         self.send_header("X-Transcript", urllib.parse.quote(transcript))
-        self.send_header("X-Reply", urllib.parse.quote(reply))
+        self.send_header("X-Reply", urllib.parse.quote(x_reply))
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Expose-Headers", "X-Transcript, X-Reply")
         self.send_header("Content-Length", str(len(audio)))
