@@ -126,11 +126,23 @@ echo "[6/7] Configuring Tailscale serve routes..."
 if command -v tailscale >/dev/null 2>&1; then
   CURRENT=$(tailscale serve status 2>/dev/null || true)
   add_route() {
-    local path="$1" target="$2"
+    local path="$1" target="$2" err ok=1
     if echo "$CURRENT" | grep -q "$target"; then
-      echo "  ✓ /$(basename $path) already configured"
+      echo "  ✓ $path already configured"
+      return
+    fi
+    # `tailscale serve https <path> <target>` (positional) was deprecated in
+    # Tailscale ~1.60; newer builds only accept --set-path. Root is the default
+    # mount, so it takes no --set-path. `|| ok=0` keeps `set -e` happy.
+    if [ "$path" = "/" ]; then
+      err=$(tailscale serve --bg "$target" 2>&1) || ok=0
     else
-      tailscale serve https "$path" "$target" 2>/dev/null && echo "  ✓ $path → $target" || echo "  ✗ failed: $path"
+      err=$(tailscale serve --bg --set-path="$path" "$target" 2>&1) || ok=0
+    fi
+    if [ "$ok" = 1 ]; then
+      echo "  ✓ $path → $target"
+    else
+      echo "  ✗ failed: $path — ${err:-(no output)}"
     fi
   }
   add_route /        http://127.0.0.1:8791
@@ -139,10 +151,10 @@ if command -v tailscale >/dev/null 2>&1; then
   add_route /events  http://127.0.0.1:8792/events
 else
   echo "  Tailscale not found — add routes manually:"
-  echo "    tailscale serve https / http://127.0.0.1:8791"
-  echo "    tailscale serve https /chat http://127.0.0.1:8792/chat"
-  echo "    tailscale serve https /voice http://127.0.0.1:8792/voice"
-  echo "    tailscale serve https /events http://127.0.0.1:8792/events"
+  echo "    tailscale serve --bg http://127.0.0.1:8791"
+  echo "    tailscale serve --bg --set-path=/chat http://127.0.0.1:8792/chat"
+  echo "    tailscale serve --bg --set-path=/voice http://127.0.0.1:8792/voice"
+  echo "    tailscale serve --bg --set-path=/events http://127.0.0.1:8792/events"
 fi
 
 # ── 7. verify ────────────────────────────────────────────────────────
