@@ -5,9 +5,11 @@ unavailable (session/usage limit, timeout, crash).
 Shared by bridge/telegram_bot.py (and available to bridge/server.py). Stdlib only.
 
 Config (bridge/.env), same names bridge/server.py already documents:
-  JARVIS_OLLAMA_BACKENDS    comma-separated IPs running Ollama on :11434,
-                            in priority order (put 127.0.0.1 last)
-  JARVIS_OLLAMA_MODEL       model for remote backends   (default qwen2.5:7b)
+  JARVIS_OLLAMA_BACKENDS    comma-separated Ollama backends on :11434, in
+                            priority order (put 127.0.0.1 last). Each entry is
+                            IP or IP=model, so a 32 GB box can run a bigger tag
+                            than an 8 GB one.
+  JARVIS_OLLAMA_MODEL       model for bare-IP remote backends (default qwen2.5:7b)
   JARVIS_OLLAMA_MODEL_LOCAL model for 127.0.0.1/localhost (default qwen2.5:3b)
   JARVIS_OLLAMA_TIMEOUT     seconds to wait for the reply (default 300 — a
                             cold 7B load can take minutes)
@@ -19,7 +21,19 @@ import socket
 import urllib.error
 import urllib.request
 
-_IPS = [ip.strip() for ip in os.environ.get("JARVIS_OLLAMA_BACKENDS", "").split(",") if ip.strip()]
+def _parse_backends(raw):
+    """['1.2.3.4=qwen2.5:32b', '127.0.0.1'] -> [('1.2.3.4', 'qwen2.5:32b'), ('127.0.0.1', None)]"""
+    out = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        ip, _, model = item.partition("=")
+        out.append((ip.strip(), model.strip() or None))
+    return out
+
+
+_BACKENDS = _parse_backends(os.environ.get("JARVIS_OLLAMA_BACKENDS", ""))
 MODEL       = os.environ.get("JARVIS_OLLAMA_MODEL", "qwen2.5:7b")
 MODEL_LOCAL = os.environ.get("JARVIS_OLLAMA_MODEL_LOCAL", "qwen2.5:3b")
 TIMEOUT     = int(os.environ.get("JARVIS_OLLAMA_TIMEOUT", "300"))
@@ -32,7 +46,7 @@ _history = []  # persists for the life of the process
 
 def available() -> bool:
     """True if at least one Ollama backend is configured."""
-    return bool(_IPS)
+    return bool(_BACKENDS)
 
 
 def _reachable(ip, port=11434, timeout=2):
@@ -52,10 +66,10 @@ def _tags(ip):
         return set()
 
 
-def _model_for(ip):
-    """A model that actually exists on this backend (configured tag → same
-    family → anything). A reachable port does not mean the model was pulled."""
-    want = MODEL_LOCAL if ip in ("127.0.0.1", "localhost") else MODEL
+def _model_for(ip, hint=None):
+    """A model that actually exists on this backend (per-backend hint → configured
+    tag → same family → anything). A reachable port does not mean it was pulled."""
+    want = hint or (MODEL_LOCAL if ip in ("127.0.0.1", "localhost") else MODEL)
     tags = _tags(ip)
     if not tags:
         return want  # /api/tags failed; try the configured model blindly
@@ -73,11 +87,11 @@ def ask(text, keep_history=True):
     """
     global _history
     tried = []
-    for ip in _IPS:
+    for ip, hint in _BACKENDS:
         if not _reachable(ip):
             tried.append(f"{ip}: puerto 11434 cerrado")
             continue
-        model = _model_for(ip)
+        model = _model_for(ip, hint)
         msgs = [{"role": "system", "content": SYSTEM}]
         if keep_history:
             msgs += _history[-30:]
