@@ -33,6 +33,14 @@ else
   echo "[2/7] bridge/.env found ✓"
 fi
 
+# matplotlib powers the scores chart attached to the weekly market email;
+# without it bin/analiza just skips the chart (non-fatal).
+if ! python3 -c "import matplotlib" 2>/dev/null; then
+  echo "  Installing python3-matplotlib (for the market scores chart)..."
+  sudo apt-get install -y python3-matplotlib 2>/dev/null \
+    && echo "  ✓ matplotlib ready" || echo "  ✗ matplotlib not installed — chart will be skipped"
+fi
+
 # ── 3. Ollama (local LLM fallback) ────────────────────────────────────
 echo "[3/7] Installing Ollama..."
 
@@ -95,8 +103,10 @@ CRON_BLOCK="$CRON_MARKER
 30 7 * * * cd $JARVIS_DIR && bin/vault-refresh >> /tmp/jarvis-vault.log 2>&1
 # Morning brief — 8:00 AM
 0 8 * * * cd $JARVIS_DIR && bin/morning-brief >> /tmp/jarvis-brief.log 2>&1
-# Market analysis — multi-agent, 7:00 AM (takes ~20-40 min, email ready before 8)
-0 7 * * * cd $JARVIS_DIR && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
+# Market analysis — FULL multi-agent (+ real dates + scores chart), Mondays 6:30 AM (~20-40 min)
+30 6 * * 1 cd $JARVIS_DIR && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
+# Market analysis — quick 1-call summary, every other day 7:00 AM
+0 7 * * 0,2-6 cd $JARVIS_DIR && bin/analiza --rapido >> /tmp/jarvis-mercado.log 2>&1
 # Watchlist seguimiento — fast indicator+event heads-up (LLM only on signals), 8:00 AM daily
 0 8 * * * cd $JARVIS_DIR && bin/seguimiento >> /tmp/jarvis-seguimiento.log 2>&1
 # Watchlist seguimiento — weekly flag scoring, Fri 6 PM

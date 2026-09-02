@@ -1,19 +1,24 @@
 #!/usr/bin/env bash
-# Jarvis market analysis — genera el email diario "Jarvis: Mercado".
+# Jarvis market analysis — genera el email "Jarvis: Mercado".
 #
-# Por defecto usa el motor MULTI-AGENTE (agents/analistas.py, estilo TradingAgents):
-# por cada activo, cadena de roles analista→alcista/bajista→trader→gestor de riesgo,
-# y un bloque final por activo (Puntuación 0-100, Recomendación, Plazo, entrada,
-# salida, próximo evento, Justificación) + visión de cartera. Envía email + Telegram.
+# Dos modos:
+#   COMPLETO (por defecto) — motor MULTI-AGENTE (agents/analistas.py, estilo
+#     TradingAgents): por cada activo, cadena de roles analista→alcista/bajista→
+#     trader→gestor de riesgo, bloque final por activo (Puntuación 0-100,
+#     Recomendación, Plazo, entrada, salida, próximo evento, Justificación) +
+#     visión de cartera. Fechas reales (calendar_data.py) + gráfico de
+#     puntuaciones adjunto. ~127 llamadas / ~15-25 min con 21 activos.
+#   RÁPIDO (--rapido) — 1 sola llamada, resumen ejecutivo de 180 palabras. Barato.
 #
 # Uso:
 #   bin/analiza                     # watchlist completa, multi-agente, email+Telegram
 #   bin/analiza --only BTC ETH      # solo esos activos (multi-agente)
 #   bin/analiza --limit 3           # solo los 3 primeros de la watchlist
-#   bin/analiza --rapido [SÍMBOLOS] # modo antiguo: 1 resumen de 180 palabras (barato)
+#   bin/analiza --rapido [SÍMBOLOS] # 1 resumen de 180 palabras (barato)
 #
-# Cron (Pi) — el multi-agente tarda ~15-25 min con 21 activos:
-#   0 8 * * * cd /home/pi/jarvis && bin/analiza >> /tmp/jarvis-mercado.log 2>&1
+# Cron (Pi) — completo los lunes, rápido el resto de días:
+#   30 6 * * 1     cd /home/pi/jarvis && bin/analiza          >> /tmp/jarvis-mercado.log 2>&1
+#   0  7 * * 0,2-6 cd /home/pi/jarvis && bin/analiza --rapido >> /tmp/jarvis-mercado.log 2>&1
 
 set -euo pipefail
 JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,9 +44,15 @@ echo "[analiza] $TODAY (rápido) — activos: $ASSETS"
 DATA=$(python3 "$JARVIS_DIR/agents/trading.py" $ASSETS 2>&1) || true
 [ -n "$DATA" ] || { echo "[analiza] No data received" >&2; exit 1; }
 
+# Fecha real de la próxima Fed (0 tokens); vacío si el calendario no cubre la fecha.
+FECHAS=$(python3 "$JARVIS_DIR/agents/calendar_data.py" 2>/dev/null) || true
+
 PROMPT="Datos de mercado $TODAY:
 
 $DATA
+${FECHAS:+
+Fechas verificadas (usa solo estas, no inventes otras):
+$FECHAS}
 
 Genera un resumen ejecutivo en español de máximo 180 palabras con bullet points concisos. Destaca los cambios más relevantes, tendencias y si algún activo requiere atención especial. Sé directo y útil."
 
