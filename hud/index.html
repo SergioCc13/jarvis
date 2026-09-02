@@ -295,6 +295,14 @@
     color:var(--text); border-bottom-left-radius:4px;
     border:1px solid var(--border-soft);
   }
+  .chat-msg-jarvis strong{ color:var(--accent); font-weight:700; }
+  .chat-msg-jarvis code{
+    background:rgba(255,255,255,.08); border-radius:4px; padding:1px 5px;
+    font-family:var(--mono); font-size:.9em;
+  }
+  .chat-msg-jarvis .chat-md-h{ font-weight:700; color:var(--accent); margin:4px 0 2px; }
+  .chat-msg-jarvis .chat-md-list{ margin:2px 0 2px 18px; padding:0; }
+  .chat-msg-jarvis .chat-md-list li{ margin:2px 0; }
   .chat-msg-error{
     align-self:center; background:rgba(255,77,94,.08);
     color:var(--bad); font-family:var(--mono); font-size:10px;
@@ -1290,11 +1298,51 @@ function _orbSpeakPulse(text){
   _speakPulseTimer = setTimeout(() => { if(_hudCore === 'speaking') _setChatState('idle'); }, ms);
 }
 
+// Minimal, safe markdown -> HTML for Jarvis's own replies (bold, italics,
+// inline code, bullet lists, headers) — this is the main place the user
+// talks to Jarvis, so raw "**bold**" asterisks showing up literally was the
+// actual bug being fixed here, same idea as the Telegram Markdown fix.
+function _escHtml(s){
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function _inlineMd(s){
+  return s
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>')
+    .replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
+}
+function _mdToHtml(text){
+  let html = '', inList = false;
+  for(const raw of text.split('\n')){
+    const line = _escHtml(raw);
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if(h){
+      if(inList){ html += '</ul>'; inList = false; }
+      html += `<div class="chat-md-h">${_inlineMd(h[2])}</div>`;
+      continue;
+    }
+    const li = line.match(/^[-*]\s+(.*)$/);
+    if(li){
+      if(!inList){ html += '<ul class="chat-md-list">'; inList = true; }
+      html += `<li>${_inlineMd(li[1])}</li>`;
+      continue;
+    }
+    if(inList){ html += '</ul>'; inList = false; }
+    if(line.trim() === ''){ html += '<br>'; continue; }
+    html += `<div>${_inlineMd(line)}</div>`;
+  }
+  if(inList) html += '</ul>';
+  return html;
+}
+
 function _addMsg(role, text){
   const msgs = document.getElementById('chat-messages');
   const el = document.createElement('div');
   el.className = `chat-msg chat-msg-${role}`;
-  el.textContent = text;
+  if(role === 'jarvis') el.innerHTML = _mdToHtml(text);
+  else el.textContent = text;
   msgs.appendChild(el);
   msgs.scrollTop = msgs.scrollHeight;
 }

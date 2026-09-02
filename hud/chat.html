@@ -57,6 +57,14 @@
     align-self:flex-start; background: var(--panel-bg); border:1px solid var(--border);
     color: var(--text); border-bottom-left-radius:4px;
   }
+  .msg.jarvis strong{ color: var(--accent); font-weight:700; }
+  .msg.jarvis code{
+    background:rgba(255,255,255,.08); border-radius:4px; padding:1px 5px;
+    font-family:var(--mono); font-size:.9em;
+  }
+  .msg.jarvis .msg-md-h{ font-weight:700; color:var(--accent); margin:4px 0 2px; }
+  .msg.jarvis .msg-md-list{ margin:2px 0 2px 18px; padding:0; }
+  .msg.jarvis .msg-md-list li{ margin:2px 0; }
   .msg.pending{ color: var(--text-dim); font-style:italic; }
   .msg.error{ color: var(--bad); border-color: var(--bad); }
 
@@ -184,10 +192,49 @@ const voiceHintEl = document.getElementById('voice-hint');
 const player = document.getElementById('player');
 let busy = false;
 
+// Minimal, safe markdown -> HTML for Jarvis's own replies (bold, italics,
+// inline code, bullet lists, headers), same as the HUD dashboard's fix —
+// otherwise **bold** shows up with literal asterisks.
+function _escHtml(s){
+  return s.replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function _inlineMd(s){
+  return s
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/__([^_]+)__/g, '<strong>$1</strong>')
+    .replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>')
+    .replace(/(?<!_)_([^_\n]+)_(?!_)/g, '<em>$1</em>');
+}
+function _mdToHtml(text){
+  let html = '', inList = false;
+  for(const raw of text.split('\n')){
+    const line = _escHtml(raw);
+    const h = line.match(/^(#{1,6})\s+(.*)$/);
+    if(h){
+      if(inList){ html += '</ul>'; inList = false; }
+      html += `<div class="msg-md-h">${_inlineMd(h[2])}</div>`;
+      continue;
+    }
+    const li = line.match(/^[-*]\s+(.*)$/);
+    if(li){
+      if(!inList){ html += '<ul class="msg-md-list">'; inList = true; }
+      html += `<li>${_inlineMd(li[1])}</li>`;
+      continue;
+    }
+    if(inList){ html += '</ul>'; inList = false; }
+    if(line.trim() === ''){ html += '<br>'; continue; }
+    html += `<div>${_inlineMd(line)}</div>`;
+  }
+  if(inList) html += '</ul>';
+  return html;
+}
+
 function addMessage(role, text) {
   const el = document.createElement('div');
   el.className = 'msg ' + role;
-  el.textContent = text;
+  if(role === 'jarvis') el.innerHTML = _mdToHtml(text);
+  else el.textContent = text;
   messagesEl.appendChild(el);
   messagesEl.scrollTop = messagesEl.scrollHeight;
   return el;
@@ -232,7 +279,7 @@ async function pollChatJob(jobId, pending) {
         pending.classList.add('error');
         pending.textContent = data.error;
       } else {
-        pending.textContent = data.reply;
+        pending.innerHTML = _mdToHtml(data.reply);
       }
       localStorage.removeItem(CHAT_JOB_KEY);
       return;
