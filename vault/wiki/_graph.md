@@ -5,7 +5,7 @@ summary: Índice completo del wiki, regenerado por bin/wiki-graph. No editar a m
 ---
 
 # Grafo del wiki — 23 notas
-_Generado 2026-09-01T20:37:00Z por `bin/wiki-graph`. **No editar a mano.**_
+_Generado por `bin/wiki-graph` a partir del frontmatter y los `[[enlaces]]`. **No editar a mano.**_
 
 ### decision
 
