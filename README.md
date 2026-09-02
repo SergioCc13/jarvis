@@ -4,16 +4,16 @@ A personal voice assistant built on [Claude Code](https://claude.com/claude-code
 
 - Talk to it locally through Claude Code's voice tools.
 - Watch a HUD (habits, agenda, skills, an animated voice "orb") in the browser.
-- Optionally talk to it from your phone over your Tailscale network — by voice or by text, both sharing the phone's own persistent conversation, separate from your terminal session.
+- Optionally use that same HUD from your phone over your Tailscale network — text and voice both live in the HUD's chat panel, sharing the phone's own persistent conversation, separate from your terminal session. The HUD is the only page: it installs as a PWA and adapts its layout for phone and laptop.
 
 ## How it works
 
 ```
 you (voice, local mic)  ──► mcp__voicemode__converse ──► Claude Code (interactive session)
-you (voice, phone)      ──► hud/voice.html ──► bridge/server.py ──► Whisper STT
+you (voice, HUD)        ──► hud/index.html ──► bridge/server.py ──► Whisper STT
                                                               └──► claude -p --resume (headless session)
-                                                              └──► Kokoro TTS ──► audio back to phone
-you (text, phone)       ──► hud/chat.html  ──► bridge/server.py ──► claude -p --resume (same headless session)
+                                                              └──► Kokoro TTS ──► audio back to the HUD
+you (text, HUD)         ──► hud/index.html ──► bridge/server.py ──► claude -p --resume (same headless session)
 ```
 
 See `CLAUDE.md` for the full layout and the "jarvis on" trigger behavior.
@@ -38,15 +38,11 @@ See `CLAUDE.md` for the full layout and the "jarvis on" trigger behavior.
    ```
    ln -s ~/.voicemode/logs/events hud/voicemode-logs
    ```
-5. (Optional, for phone access) after `bin/jarvis` has set up `tailscale serve`, open the printed bridge token + your Tailscale node's HTTPS URL on your phone — voice:
+5. (Optional, for phone access) after `bin/jarvis` has set up `tailscale serve`, open your Tailscale node's HTTPS URL on your phone, passing the bridge token once:
    ```
-   https://<your-tailscale-node>.ts.net/hud/voice.html?token=<token from bridge/config.json>
+   https://<your-tailscale-node>.ts.net/hud/?token=<token from bridge/config.json>
    ```
-   or text chat (same token, no microphone needed):
-   ```
-   https://<your-tailscale-node>.ts.net/hud/chat.html?token=<token from bridge/config.json>
-   ```
-   `chat.html` also has a mic button for voice, which talks to *this* PC's bridge specifically (needed if `chat.html` itself is hosted elsewhere, e.g. an always-on Raspberry Pi doing text-only Jarvis). It needs a second URL param the first time: `&voice_token=<same token from bridge/config.json>`, and the PC's Tailscale hostname is a constant (`PC_VOICE_HOST`) near the top of `chat.html`'s `<script>` — update it if your PC's Tailscale node name changes. The mic button checks that this PC is actually reachable before recording, so it fails with a clear message instead of a network error when the PC is off.
+   The token is stored in the browser after the first open, so later you can just open `.../hud/`. On the phone the HUD shows a Face ID / fingerprint gate before it unlocks (a UX guard against a lost or unlocked phone — see the security notes). Use **Add to Home Screen** to install it as a standalone app.
 
    **Read the security notes in `CLAUDE.md` before doing this** — the bridge token grants whatever Bash permissions your project's `.claude/settings.local.json` already pre-approves.
 

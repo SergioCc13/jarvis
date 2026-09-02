@@ -2,8 +2,17 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
 <title>JARVIS OS — HUD</title>
+<meta name="theme-color" content="#070809">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JARVIS">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
+<link rel="apple-touch-icon" href="icon-192.png">
 <script src="jarvis-config.js" onerror="console.warn('jarvis-config.js not found — start bridge/server.py first')"></script>
 <style>
   :root{
@@ -28,9 +37,14 @@
     --radius: 18px;
     --radius-sm: 11px;
     --gap: 10px;
+    --kb: 0px;            /* height covered by the on-screen keyboard (phones) */
+    color-scheme: dark;
   }
-  *{ box-sizing:border-box; margin:0; padding:0; }
+  *{ box-sizing:border-box; margin:0; padding:0; -webkit-tap-highlight-color: transparent; }
   html,body{ height:100%; overflow:hidden; }
+  @media (prefers-reduced-motion: reduce){
+    *, *::before, *::after{ animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; }
+  }
   body{
     background:
       radial-gradient(1100px 720px at 12% -12%, #10181b 0%, transparent 58%),
@@ -76,14 +90,35 @@
   .brand span{ color:var(--text-dim); font-weight:400; letter-spacing:1px; margin-left:6px; }
   .clock{ font-family:var(--mono); font-size:14px; letter-spacing:1px; color:var(--text); }
 
+  /* hamburger — only visible on the phone layout, opens the side-panel drawer */
+  .drawer-btn{
+    display:none; align-items:center; justify-content:center;
+    width:34px; height:34px; margin-right:4px; flex-shrink:0;
+    background:#111518; border:1px solid var(--border); border-radius:9px;
+    color:var(--accent); cursor:pointer;
+  }
+  .drawer-btn svg{ width:18px; height:18px; display:block; }
+  .scrim{
+    display:none; position:fixed; inset:0; z-index:35;
+    background:rgba(0,0,0,.55);
+    opacity:0; pointer-events:none; transition:opacity .28s ease;
+  }
+  body.drawer-open .scrim{ opacity:1; pointer-events:auto; }
+
   /* ── dashboard: 3 columnas; las laterales son contenedores flex ──── */
   .dashboard{
     display:grid;
     grid-template-columns: 250px minmax(0,1fr) 250px;
     grid-template-rows: minmax(0,1fr);
+    grid-template-areas: "left center right";
     gap: var(--gap);
     min-height:0;
   }
+  .col-left  { grid-area:left; }
+  .col-center{ grid-area:center; }
+  .col-right { grid-area:right; }
+  /* wrapper is layout-transparent on desktop/tablet; becomes the drawer on phone */
+  .rail{ display:contents; }
   .col-side, .col-center{
     display:flex; flex-direction:column; gap: var(--gap);
     min-height:0; min-width:0;
@@ -113,36 +148,55 @@
 
   /* ── portrait / phone (< 640px) ───────────────────────────────── */
   @media (max-width:639px){
-    html,body{ overflow:auto; height:auto; }
+    :root{ --gap:6px; --radius:12px; }
+    html,body{ overflow:hidden; height:100%; }
+    /* fixed app shell; the chat list is the only thing that scrolls.
+       --kb is the height the on-screen keyboard covers (set from JS). */
     .app{
-      height:auto; min-height:100dvh;
-      grid-template-rows: auto auto auto;
-      overflow:visible;
-      padding: 6px; gap: 6px;
+      grid-template-rows: auto 1fr auto;
+      height:100dvh;
+      height:calc(100dvh - var(--kb));
+      overflow:hidden;
+      padding: max(6px, env(safe-area-inset-top)) 6px max(6px, env(safe-area-inset-bottom));
+      gap:6px;
     }
-    --gap: 6px; --radius: 12px;
-    .dashboard{
-      grid-template-columns: 1fr 1fr;
-      grid-template-areas:
-        "left   right"
-        "center center";
-      grid-template-rows: auto minmax(0,1fr);
-      overflow:visible;
-    }
-    .col-side{ flex-direction:column; }
-    .orb-panel{ min-height:160px; max-height:220px; }
-    /* compact topbar */
-    .topbar{ padding:6px 10px; gap:10px; }
+    .drawer-btn{ display:flex; }
+    .scrim{ display:block; }
+    .topbar{ padding:6px 10px; gap:8px; }
     .brand{ font-size:12px; letter-spacing:3px; }
     .brand span{ display:none; }
     .clock{ font-size:12px; }
-    /* compact panels */
-    .panel{ max-height:220px; }
-    .col-side > .panel{ max-height:none; }
+
+    .dashboard{
+      grid-template-columns: 1fr;
+      grid-template-areas: "center";
+      grid-template-rows: minmax(0,1fr);
+      overflow:hidden;
+    }
+    .col-center{ grid-area:center; min-height:0; }
+    .orb-panel{ flex:0 0 132px; min-height:132px; max-height:132px; padding:6px; }
+    .orb-panel .core-label{ font-size:10px; }
+    .chat-panel{ flex:1 1 auto; min-height:0; }
+
+    /* side panels slide in from the left as an overlay drawer */
+    .rail{
+      display:flex; flex-direction:column; gap:10px;
+      position:fixed; z-index:40; inset:0 auto 0 0;
+      width:min(86vw, 340px);
+      padding: max(14px, env(safe-area-inset-top)) 12px max(14px, env(safe-area-inset-bottom));
+      background: linear-gradient(180deg, var(--panel-hi), var(--bg));
+      border-right:1px solid var(--border);
+      box-shadow: 18px 0 44px rgba(0,0,0,.5);
+      overflow-y:auto; overscroll-behavior:contain;
+      transform:translateX(-100%);
+      transition: transform .28s ease;
+    }
+    body.drawer-open .rail{ transform:none; }
+    .col-side{ flex-direction:column; }
+    .col-side > .panel{ flex:0 0 auto; min-height:0; max-height:none; }
     .panel-head h2{ font-size:9px; letter-spacing:1.5px; }
-    /* compact bottombar */
+
     .bottombar{ padding:6px 12px; gap:12px; flex-wrap:wrap; }
-    /* audio strip stacked */
     .audio-strip{ grid-template-columns:1fr; gap:4px; padding:8px 12px; }
     .audio-col:last-child{ text-align:left; }
   }
@@ -534,12 +588,62 @@
   }
   @media (max-width:639px){
     body.focus-mode, body.focus-mode html{ overflow:hidden; height:100%; }
-    body.focus-mode .app{ height:100dvh; }
+    body.focus-mode .app{ height:calc(100dvh - var(--kb)); }
     body.focus-mode .dashboard{ height:100%; overflow:hidden; }
   }
+
+  /* ── unlock gate (phone / remote access) ───────────────────────── */
+  .gate{
+    position:fixed; inset:0; z-index:100;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:22px;
+    background:
+      radial-gradient(900px 620px at 50% -10%, #10181b 0%, transparent 60%),
+      var(--bg);
+    padding:24px;
+    -webkit-font-smoothing:antialiased;
+  }
+  .gate[hidden]{ display:none; }
+  .gate-icon{
+    width:66px; height:66px; border-radius:50%;
+    border:1px solid var(--border); background:var(--panel-bg);
+    display:flex; align-items:center; justify-content:center;
+    color:var(--accent); box-shadow:0 0 22px var(--accent-glow);
+  }
+  .gate-icon svg{ width:30px; height:30px; }
+  .gate-title{ font-family:var(--mono); letter-spacing:4px; font-size:13px; color:var(--accent); }
+  .gate-btn{
+    font-family:var(--mono); font-size:13px; letter-spacing:1.5px; text-transform:uppercase;
+    color:#08120d; background:var(--accent); border:none; border-radius:12px;
+    padding:14px 26px; cursor:pointer;
+  }
+  .gate-btn:active{ opacity:.85; }
+  .gate-btn:disabled{ opacity:.5; cursor:default; }
+  .gate-status{
+    font-family:var(--mono); font-size:12px; color:var(--text-dim);
+    text-align:center; max-width:320px; line-height:1.5;
+  }
+  .gate-status.error{ color:var(--bad); }
+  .gate-trust{
+    font-family:var(--mono); font-size:11px; color:var(--text-dim);
+    display:flex; align-items:center; gap:7px; cursor:pointer; user-select:none;
+  }
+  .gate-trust input{ accent-color:var(--accent); width:15px; height:15px; }
 </style>
 </head>
 <body>
+
+<div class="gate" id="gate" hidden>
+  <div class="gate-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 2a5 5 0 0 0-5 5v3a5 5 0 0 0 10 0V7a5 5 0 0 0-5-5Z"/>
+      <path d="M7 10.5v.5a5 5 0 0 0 10 0v-.5M12 17v3M9 20h6"/>
+    </svg>
+  </div>
+  <div class="gate-title">JARVIS</div>
+  <button class="gate-btn" id="gate-btn" type="button">Desbloquear</button>
+  <label class="gate-trust"><input type="checkbox" id="gate-trust"> Confiar en este dispositivo</label>
+  <div class="gate-status" id="gate-status">Verificando…</div>
+</div>
 
 <canvas id="bg-canvas"></canvas>
 
@@ -547,43 +651,19 @@
 
   <!-- ── topbar ── -->
   <div class="topbar">
+    <button class="drawer-btn" id="drawer-btn" type="button" aria-label="Paneles" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+        <path d="M4 7h16M4 12h16M4 17h16"/>
+      </svg>
+    </button>
     <div class="brand">JARVIS<span>OS · HUD</span></div>
     <span class="clock" id="clock" style="margin-left:auto">--:--:--</span>
   </div>
 
-  <!-- ── 3-column dashboard ── -->
+  <!-- ── dashboard ── -->
   <div class="dashboard">
 
-    <!-- left col: hábitos + comandos -->
-    <div class="col-side col-left">
-      <section class="panel" id="panel-habitos">
-        <div class="panel-head">
-          <h2 onclick="togglePanel('panel-habitos')" style="flex:1">Hábitos</h2>
-          <div class="panel-head-actions">
-            <span class="badge" id="habitos-badge"></span>
-            <button class="minimize-btn" id="min-panel-habitos" onclick="togglePanel('panel-habitos')" tabindex="-1">−</button>
-          </div>
-        </div>
-        <div class="panel-body" id="habitos-body">
-          <div class="empty">cargando…</div>
-        </div>
-      </section>
-
-      <section class="panel" id="panel-skills">
-        <div class="panel-head">
-          <h2 onclick="togglePanel('panel-skills')" style="flex:1">Comandos</h2>
-          <div class="panel-head-actions">
-            <span class="badge" id="skills-badge"></span>
-            <button class="minimize-btn" id="min-panel-skills" onclick="togglePanel('panel-skills')" tabindex="-1">−</button>
-          </div>
-        </div>
-        <div class="panel-body" id="skills-body">
-          <div class="empty">cargando…</div>
-        </div>
-      </section>
-    </div>
-
-    <!-- center col: orb + audio -->
+    <!-- center: orb + chat — the main view, full-screen on phone -->
     <div class="col-center">
       <div class="panel orb-panel" id="panel-core">
         <canvas id="core-canvas"></canvas>
@@ -640,6 +720,38 @@
       </div>
     </div>
 
+    <!-- side panels — layout-transparent on desktop, a slide-in drawer on phone -->
+    <div class="rail" id="rail">
+
+    <!-- left col: hábitos + comandos -->
+    <div class="col-side col-left">
+      <section class="panel" id="panel-habitos">
+        <div class="panel-head">
+          <h2 onclick="togglePanel('panel-habitos')" style="flex:1">Hábitos</h2>
+          <div class="panel-head-actions">
+            <span class="badge" id="habitos-badge"></span>
+            <button class="minimize-btn" id="min-panel-habitos" onclick="togglePanel('panel-habitos')" tabindex="-1">−</button>
+          </div>
+        </div>
+        <div class="panel-body" id="habitos-body">
+          <div class="empty">cargando…</div>
+        </div>
+      </section>
+
+      <section class="panel" id="panel-skills">
+        <div class="panel-head">
+          <h2 onclick="togglePanel('panel-skills')" style="flex:1">Comandos</h2>
+          <div class="panel-head-actions">
+            <span class="badge" id="skills-badge"></span>
+            <button class="minimize-btn" id="min-panel-skills" onclick="togglePanel('panel-skills')" tabindex="-1">−</button>
+          </div>
+        </div>
+        <div class="panel-body" id="skills-body">
+          <div class="empty">cargando…</div>
+        </div>
+      </section>
+    </div>
+
     <!-- right col: agenda + feed -->
     <div class="col-side col-right">
       <section class="panel" id="panel-agenda">
@@ -669,6 +781,8 @@
       </section>
     </div>
 
+    </div><!-- /.rail -->
+
   </div>
 
   <!-- ── status bar ── -->
@@ -678,9 +792,29 @@
     <div class="status-item" id="st-vault"><span class="st-dot"></span><span>Vault</span></div>
   </div>
 
+  <div class="scrim" id="scrim"></div>
+
 </div>
 
 <script>
+// Token can arrive as ?token=... (first open on a phone); persist it and clean
+// the URL so it isn't left in history. jarvis-config.js still wins when present
+// (local machine), falling back to this stored value everywhere else.
+(function captureToken(){
+  try{
+    const p = new URLSearchParams(location.search);
+    const t = p.get('token');
+    if(t){
+      localStorage.setItem('jarvis_token', t);
+      p.delete('token');
+      const qs = p.toString();
+      history.replaceState(null, '', location.pathname + (qs ? '?'+qs : '') + location.hash);
+    }
+  }catch(_){}
+})();
+
+const REDUCED_MOTION = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false;
+
 const VAULT = '../vault/outputs/';
 const REFRESH_MS = 15000;
 const AUDIO_REFRESH_MS = 1500;
@@ -1076,7 +1210,8 @@ function initCore(){
   const canvas = document.getElementById('core-canvas');
   const panel = document.getElementById('panel-core');
   const rect = panel.getBoundingClientRect();
-  const cssSize = Math.round(Math.max(180, Math.min(rect.width, rect.height-50)-28));
+  const compact = window.matchMedia('(max-width:639px)').matches;
+  const cssSize = Math.round(Math.max(compact ? 108 : 180, Math.min(rect.width, rect.height - (compact ? 22 : 50)) - (compact ? 8 : 28)));
   canvas.style.width = cssSize+'px'; canvas.style.height = cssSize+'px';
   const dpr = window.devicePixelRatio||1;
   canvas.width = cssSize*dpr; canvas.height = cssSize*dpr;
@@ -1092,10 +1227,12 @@ function initCore(){
     const target=CORE_STATES[coreTargetState];
     const lr=1-Math.pow(0.02,dt);
     for(const k in target) coreCurrent[k]=noiseLerp(coreCurrent[k],target[k],lr);
-    noiseT+=coreCurrent.timeSpeed*dt; waveT+=coreCurrent.waveSpeed*dt;
+    // prefers-reduced-motion: keep the shape still, let only state transitions lerp
+    const mdt = REDUCED_MOTION ? 0 : dt;
+    noiseT+=coreCurrent.timeSpeed*mdt; waveT+=coreCurrent.waveSpeed*mdt;
     // lumps travel round the rim faster while thinking → "spinning thoughts"
     const rotBoost = coreTargetState==='thinking' ? 3.4 : coreTargetState==='listening' ? 1.8 : 1;
-    breatheT+=dt; rotT+=dt*0.06*rotBoost; floatT+=dt;
+    breatheT+=mdt; rotT+=mdt*0.06*rotBoost; floatT+=mdt;
     const breatheHz = coreTargetState==='thinking' ? 2.3 : 0.9;
     const scale=1+Math.sin(breatheT*breatheHz)*coreCurrent.breathe;
     const sqX=1+noise2D(breatheT*.05,11.3)*.015;
@@ -1203,6 +1340,7 @@ async function renderAudio(){
 /* ── ambient background ─────────────────────────────────────────────── */
 
 function initBackground(){
+  if(REDUCED_MOTION) return;   // ambient drifting field is purely decorative
   const canvas=document.getElementById('bg-canvas');
   const ctx=canvas.getContext('2d');
   const [r,g,b]=ACCENT_RGB;
@@ -1490,6 +1628,7 @@ async function startVoice(){
   if(!navigator.mediaDevices){ _noMic(); return; }
   if(_recording){ stopVoice(); return; }
   _recording = true;
+  navigator.vibrate?.(15);
   document.getElementById('voice-btn').classList.add('recording');
   _setChatState('listening');
   try{
@@ -1543,6 +1682,7 @@ async function startVoice(){
 function stopVoice(){
   if(!_mediaRecorder || !_recording) return;
   _recording = false;
+  navigator.vibrate?.(10);
   const btn = document.getElementById('voice-btn');
   btn.classList.remove('recording');
   btn.style.opacity = '';
@@ -1652,8 +1792,9 @@ function initChat(){
 
   /* modo foco: al enfocar el chat, se colapsa todo menos orbe + chat */
   let _focusOutTimer = null;
-  function enterFocus(){ clearTimeout(_focusOutTimer); document.body.classList.add('focus-mode'); }
-  function exitFocus(){ document.body.classList.remove('focus-mode'); }
+  function enterFocus(){ clearTimeout(_focusOutTimer); document.body.classList.add('focus-mode'); try{ localStorage.setItem('jarvis_focus','1'); }catch(_){} }
+  function exitFocus(){ document.body.classList.remove('focus-mode'); try{ localStorage.setItem('jarvis_focus','0'); }catch(_){} }
+  try{ if(localStorage.getItem('jarvis_focus') === '1') document.body.classList.add('focus-mode'); }catch(_){}
   chatPanel.addEventListener('focusin', enterFocus);
   chatPanel.addEventListener('focusout', ()=>{
     _focusOutTimer = setTimeout(()=>{
@@ -1730,26 +1871,156 @@ function initEvents(){
   src.onerror = () => { src.close(); setTimeout(initEvents, 5000); };
 }
 
-/* ── boot ───────────────────────────────────────────────────────────── */
+/* ── side-panel drawer (phone) ─────────────────────────────────────── */
+
+function initDrawer(){
+  const btn = document.getElementById('drawer-btn');
+  const scrim = document.getElementById('scrim');
+  if(!btn || !scrim) return;
+  const set = open => {
+    document.body.classList.toggle('drawer-open', open);
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  };
+  btn.addEventListener('click', () => set(!document.body.classList.contains('drawer-open')));
+  scrim.addEventListener('click', () => set(false));
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') set(false); });
+}
+
+/* ── keyboard inset: keep the composer above the on-screen keyboard ── */
+
+(function initKeyboardInset(){
+  const vv = window.visualViewport;
+  if(!vv) return;
+  const on = () => {
+    const kb = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+    document.documentElement.style.setProperty('--kb', (kb > 60 ? kb : 0) + 'px');
+  };
+  vv.addEventListener('resize', on);
+  vv.addEventListener('scroll', on);
+  on();
+})();
+
+/* ── service worker: instant launch + clean offline shell ──────────── */
+
+function registerSW(){
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('sw.js')
+      .catch(e => console.warn('[jarvis] SW register failed', e));
+  }
+}
+
+/* ── unlock gate (WebAuthn) — client-side only, UX guard for a lost or
+   unlocked phone; skipped on the local machine and on trusted devices ── */
+
+const CRED_KEY = 'jarvis_webauthn_cred_id';
+
+function b64uToBuf(b64u){
+  const b64 = b64u.replace(/-/g,'+').replace(/_/g,'/').padEnd(b64u.length + (4 - b64u.length % 4) % 4, '=');
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) buf[i] = bin.charCodeAt(i);
+  return buf;
+}
+function bufToB64u(buf){
+  let bin = '';
+  new Uint8Array(buf).forEach(b => bin += String.fromCharCode(b));
+  return btoa(bin).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+async function registerBiometric(){
+  const cred = await navigator.credentials.create({ publicKey:{
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    rp:{ name:'Jarvis' },
+    user:{ id: crypto.getRandomValues(new Uint8Array(16)), name:'jarvis-hud', displayName:'Jarvis' },
+    pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+    authenticatorSelection:{ authenticatorAttachment:'platform', userVerification:'required' },
+    timeout:60000,
+  }});
+  localStorage.setItem(CRED_KEY, bufToB64u(cred.rawId));
+}
+async function verifyBiometric(credIdB64u){
+  await navigator.credentials.get({ publicKey:{
+    challenge: crypto.getRandomValues(new Uint8Array(32)),
+    allowCredentials:[{ id: b64uToBuf(credIdB64u), type:'public-key' }],
+    userVerification:'required', timeout:60000,
+  }});
+}
+
+let _booted = false;
+function boot(){
+  if(_booted) return;
+  _booted = true;
+  tickClock();
+  initCore();
+  initBackground();
+  restorePanels();
+  initChat();
+  initDrawer();
+  initEvents();
+  initClapDetect();
+  registerSW();
+  setInterval(tickClock, 1000);
+  refreshAll();
+  renderAudio();
+  checkBridge();
+  setInterval(refreshAll, REFRESH_MS);
+  setInterval(renderAudio, AUDIO_REFRESH_MS);
+  setInterval(checkBridge, DEVICES_REFRESH_MS);
+}
+
+function unlockApp(){
+  const gate = document.getElementById('gate');
+  if(gate) gate.hidden = true;
+  boot();
+}
 
 async function refreshAll(){
   await Promise.all([renderHabitos(), renderAgenda(), renderSkills(), renderFeed(), renderBrief(), updateVaultStatus()]);
 }
 
-tickClock();
-initCore();
-initBackground();
-restorePanels();
-initChat();
-initEvents();
-initClapDetect();
-setInterval(tickClock, 1000);
-refreshAll();
-renderAudio();
-checkBridge();
-setInterval(refreshAll, REFRESH_MS);
-setInterval(renderAudio, AUDIO_REFRESH_MS);
-setInterval(checkBridge, DEVICES_REFRESH_MS);
+async function runGate(){
+  const gate = document.getElementById('gate');
+  const btn = document.getElementById('gate-btn');
+  const statusEl = document.getElementById('gate-status');
+  const trustEl = document.getElementById('gate-trust');
+
+  const isLocal = ['localhost','127.0.0.1','::1',''].includes(location.hostname);
+  let skip = false;
+  try{ skip = localStorage.getItem('jarvis_skip_gate') === '1'; }catch(_){}
+  if(isLocal || skip){ unlockApp(); return; }
+
+  gate.hidden = false;
+  const supported = window.PublicKeyCredential
+    && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable().catch(() => false);
+  if(!supported){
+    statusEl.textContent = 'Sin biometría en este navegador — entrando con el token.';
+    setTimeout(unlockApp, 800);
+    return;
+  }
+
+  let credId = null;
+  try{ credId = localStorage.getItem(CRED_KEY); }catch(_){}
+  btn.textContent = credId ? 'Desbloquear con Face ID / huella' : 'Registrar este dispositivo';
+  statusEl.textContent = credId
+    ? 'Confirma con tu huella o rostro.'
+    : 'Primera vez aquí: registra este dispositivo con tu huella o Face ID.';
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    statusEl.classList.remove('error');
+    try{
+      if(credId) await verifyBiometric(credId);
+      else await registerBiometric();
+      if(trustEl && trustEl.checked){ try{ localStorage.setItem('jarvis_skip_gate','1'); }catch(_){} }
+      unlockApp();
+    }catch(err){
+      statusEl.textContent = 'No se pudo verificar (' + err.name + ').';
+      statusEl.classList.add('error');
+      btn.disabled = false;
+    }
+  });
+}
+
+runGate();
 </script>
 </body>
 </html>
