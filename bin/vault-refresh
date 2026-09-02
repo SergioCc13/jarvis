@@ -2,6 +2,10 @@
 # Regenerate vault/outputs by running each Jarvis skill via Claude.
 # Run this before the morning brief so the HUD always shows fresh data.
 #
+# Each skill is one `claude -p` call. By default it SKIPS a skill whose
+# vault/outputs/<skill>.md is already from today (no wasted tokens on a
+# re-run). Pass --force to regenerate everything regardless.
+#
 # Cron on Pi (7:30 AM daily, 30 min before morning brief):
 #   30 7 * * * cd /home/pi/jarvis && bin/vault-refresh >> /tmp/jarvis-vault.log 2>&1
 
@@ -10,15 +14,24 @@ set -euo pipefail
 JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$JARVIS_DIR"
 
-echo "[vault-refresh] $(date '+%Y-%m-%d %H:%M') — refreshing vault..."
+FORCE=0
+[ "${1:-}" = "--force" ] && FORCE=1
+
+echo "[vault-refresh] $(date '+%Y-%m-%d %H:%M') — refreshing vault${FORCE:+ (force)}..."
 
 mkdir -p vault/outputs
+TODAY=$(date +%F)
 
 # Run each skill. These are Jarvis voice skills that write to vault/outputs/.
 # Claude must be authenticated and the skills must be available.
 SKILLS=("plan" "habitos" "recordatorios" "inbox")
 
 for skill in "${SKILLS[@]}"; do
+  f="vault/outputs/${skill}.md"
+  if [ "$FORCE" -eq 0 ] && [ -f "$f" ] && [ "$(date -r "$f" +%F 2>/dev/null)" = "$TODAY" ]; then
+    echo "[vault-refresh] — $skill ya está al día, se omite"
+    continue
+  fi
   echo "[vault-refresh] Running skill: $skill"
   claude -p "Ejecuta el skill '$skill' para actualizar vault/outputs/${skill}.md con los datos de hoy." \
     --output-format text > /dev/null 2>&1 && echo "[vault-refresh] ✓ $skill" || echo "[vault-refresh] ✗ $skill falló"

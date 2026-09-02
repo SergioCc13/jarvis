@@ -21,6 +21,7 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ollama_fallback  # noqa: E402  (bridge/ollama_fallback.py)
+from session_lock import claude_session_lock  # noqa: E402  (bridge/session_lock.py)
 
 TOKEN          = os.environ.get("JARVIS_TELEGRAM_TOKEN", "")
 ALLOWED_ID     = int(os.environ.get("JARVIS_TELEGRAM_CHAT_ID", "0") or 0)
@@ -131,9 +132,13 @@ def ask_claude(message):
         args += ["--session-id", session_id]
 
     try:
-        result = subprocess.run(
-            args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=120,
-        )
+        # one `claude --resume <session>` at a time (the HUD bridge shares it)
+        with claude_session_lock():
+            result = subprocess.run(
+                args, cwd=JARVIS_DIR, capture_output=True, text=True, timeout=120,
+            )
+    except TimeoutError as e:
+        return _ollama_reply(message, f"sesión ocupada: {e}") or f"(ocupado: {e})"
     except subprocess.TimeoutExpired:
         return _ollama_reply(message, "timeout") or "(claude: timeout, y sin Ollama disponible)"
     except OSError as e:

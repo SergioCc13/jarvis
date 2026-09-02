@@ -24,6 +24,7 @@ hud/voicemode-logs
 hud/jarvis-config.js
 bridge/watchdog_state.json
 bridge/reminders_state.json
+bridge/.claude-session.lock
 bridge/hud_media/
 
 # Personal vault content (habits, plans, reminders, notes) — keep the folders, not the data
