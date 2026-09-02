@@ -269,15 +269,35 @@ def transcribe(audio_bytes, content_type):
         return json.loads(resp.read())["text"].strip()
 
 
-# ── Ollama fallback ───────────────────────────────────────────────────────────
-# JARVIS_OLLAMA_BACKENDS   = comma-separated IPs running Ollama (port 11434)
-# JARVIS_OLLAMA_MODEL      = model for remote backends (default: qwen2.5:7b)
+# ── Fallback chain: Claude → free cloud → Ollama backends ─────────────────────
+# JARVIS_CLOUD_URL/KEY/MODEL = optional OpenAI-compatible endpoint (Groq, Gemini,
+#                             OpenRouter…) tried when Claude fails, before the
+#                             local Ollama backends. Leave URL blank to skip.
+# JARVIS_OLLAMA_BACKENDS    = comma-separated Ollama backends (port 11434), in
+#                             priority order. Each entry is IP or IP=model, so a
+#                             32 GB box can run a bigger tag than an 8 GB one.
+#                             Bare IPs use JARVIS_OLLAMA_MODEL (or _MODEL_LOCAL
+#                             for 127.0.0.1).
+# JARVIS_OLLAMA_MODEL       = model for remote backends (default: qwen2.5:7b)
 # JARVIS_OLLAMA_MODEL_LOCAL = model for 127.0.0.1 Pi-local (default: qwen2.5:3b)
-_OLLAMA_IPS = [
-    ip.strip()
-    for ip in os.environ.get("JARVIS_OLLAMA_BACKENDS", "").split(",")
-    if ip.strip()
-]
+CLOUD_URL = os.environ.get("JARVIS_CLOUD_URL", "").strip()
+CLOUD_KEY = os.environ.get("JARVIS_CLOUD_KEY", "").strip()
+CLOUD_MODEL = os.environ.get("JARVIS_CLOUD_MODEL", "").strip()
+
+
+def _parse_backends(raw):
+    """['1.2.3.4=qwen2.5:32b', '127.0.0.1'] -> [('1.2.3.4', 'qwen2.5:32b'), ('127.0.0.1', None)]"""
+    out = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        ip, _, model = item.partition("=")
+        out.append((ip.strip(), model.strip() or None))
+    return out
+
+
+_OLLAMA_BACKENDS = _parse_backends(os.environ.get("JARVIS_OLLAMA_BACKENDS", ""))
 OLLAMA_MODEL = os.environ.get("JARVIS_OLLAMA_MODEL", "qwen2.5:7b")
 OLLAMA_MODEL_LOCAL = os.environ.get("JARVIS_OLLAMA_MODEL_LOCAL", "qwen2.5:3b")
 OLLAMA_SYSTEM = (
@@ -303,15 +323,16 @@ def _ollama_tags(ip):
         return set()
 
 
-def _ollama_model_for(ip):
+def _ollama_model_for(ip, hint=None):
     """Pick a model that actually exists on this backend.
 
     A reachable port does not mean the configured model was ever pulled; asking
     for a missing model just returns an HTTP 404 that used to surface as a dead
-    fallback. Prefer the configured tag, then any same-family tag, then anything.
-    Returns None only when /api/tags succeeded and the backend has no models.
+    fallback. Prefer the per-backend hint (IP=model), then the configured tag,
+    then any same-family tag, then anything. Returns None only when /api/tags
+    succeeded and the backend has no models.
     """
-    want = OLLAMA_MODEL_LOCAL if ip in ("127.0.0.1", "localhost") else OLLAMA_MODEL
+    want = hint or (OLLAMA_MODEL_LOCAL if ip in ("127.0.0.1", "localhost") else OLLAMA_MODEL)
     tags = _ollama_tags(ip)
     if not tags:
         return want  # tags endpoint failed; try the configured model blindly
@@ -378,6 +399,56 @@ def ask_claude(text):
 
 
 _ollama_active = False  # track whether we already notified about the switch
+_cloud_active = False
+
+
+def _ask_cloud(text):
+    """One call to an OpenAI-compatible chat endpoint (Groq / Gemini / OpenRouter…)."""
+    messages = (
+        [{"role": "system", "content": OLLAMA_SYSTEM}]
+        + _ollama_history[-30:]
+        + [{"role": "user", "content": text}]
+    )
+    payload = json.dumps({"model": CLOUD_MODEL, "messages": messages, "stream": False}).encode()
+    req = urllib.request.Request(
+        CLOUD_URL,
+        data=payload,
+        headers={"Content-Type": "application/json", "Authorization": f"Bearer {CLOUD_KEY}"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")[:300]
+        raise RuntimeError(f"cloud HTTP {e.code}: {detail}") from None
+    except Exception as e:
+        raise RuntimeError(f"cloud unreachable: {type(e).__name__}: {e}") from None
+    try:
+        reply = (data["choices"][0]["message"]["content"] or "").strip()
+    except (KeyError, IndexError, TypeError):
+        raise RuntimeError(f"cloud: bad response ({json.dumps(data)[:200]})") from None
+    if not reply:
+        raise RuntimeError("cloud: empty response")
+    _ollama_history.append({"role": "user", "content": text})
+    _ollama_history.append({"role": "assistant", "content": reply})
+    return reply
+
+
+def _cloud_fallback(text, claude_err):
+    """Tier between Claude and the local Ollama backends: a free hosted model."""
+    global _cloud_active
+    if not (CLOUD_URL and CLOUD_KEY and CLOUD_MODEL):
+        raise RuntimeError("JARVIS_CLOUD_* not configured")
+    sys.stderr.write(
+        f"[bridge] Claude failed ({type(claude_err).__name__}: {claude_err}); "
+        f"trying cloud ({CLOUD_MODEL})\n"
+    )
+    if not _cloud_active:
+        _cloud_active = True
+        msg = f"Claude no disponible. Usando {CLOUD_MODEL} (nube)."
+        _notify_async("⚠️ " + msg)
+        _push_event({"type": "notice", "text": "⚠️ " + msg})
+    return _ask_cloud(text)
 
 
 def _ollama_fallback(text, claude_err):
@@ -390,11 +461,11 @@ def _ollama_fallback(text, claude_err):
     """
     global _ollama_active
     tried = []
-    for ip in _OLLAMA_IPS:
+    for ip, hint in _OLLAMA_BACKENDS:
         if not _reachable(ip, port=11434):
             tried.append(f"{ip}: port 11434 closed")
             continue
-        model = _ollama_model_for(ip)
+        model = _ollama_model_for(ip, hint)
         if not model:
             tried.append(f"{ip}: no model installed (ollama pull {OLLAMA_MODEL})")
             continue
@@ -421,23 +492,27 @@ def _ollama_fallback(text, claude_err):
 
 
 def ask(text):
-    """Try Claude first; fall back to Ollama if Claude fails."""
-    global _ollama_active
+    """Claude first; then a free cloud model; then the local Ollama backends."""
+    global _ollama_active, _cloud_active
     try:
         reply = ask_claude(text)
-        if _ollama_active:
-            _ollama_active = False
+        if _ollama_active or _cloud_active:
+            _ollama_active = _cloud_active = False
             msg = "Claude disponible de nuevo."
             _notify_async("✅ " + msg)
             _push_event({"type": "notice", "text": "✅ " + msg})
         return reply
     except Exception as claude_err:
-        try:
-            return _ollama_fallback(text, claude_err)
-        except Exception as fb_err:
-            sys.stderr.write(f"[bridge] fallback exhausted: {fb_err}\n")
-            _push_event({"type": "notice", "text": "❌ " + str(fb_err)})
-            raise
+        errors = []
+        for tier in (_cloud_fallback, _ollama_fallback):
+            try:
+                return tier(text, claude_err)
+            except Exception as e:
+                errors.append(str(e))
+        fb_err = " | ".join(errors)
+        sys.stderr.write(f"[bridge] fallback exhausted: {fb_err}\n")
+        _push_event({"type": "notice", "text": "❌ " + fb_err})
+        raise RuntimeError(fb_err)
 
 
 def synthesize(text):
