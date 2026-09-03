@@ -59,7 +59,9 @@ See `CLAUDE.md` for the full layout and the "jarvis on" trigger behavior.
 
 ## Auto-start on PC boot (optional)
 
-So voice/chat via the PC are available whenever it's powered on, without remembering to run `bin/jarvis` by hand: `bin/jarvis` calls into `bin/jarvis-services` for the actual service-starting logic (whisper/kokoro/HUD/bridge/tailscale serve — no browser, no interactive Claude session), which is safe to run unattended. On Windows/WSL2, a `.bat` in the Windows Startup folder (`shell:startup`, i.e. `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`) running `wsl.exe -d <your-distro> -u <your-user> /path/to/jarvis-services` at every login covers this without needing admin rights (unlike Task Scheduler, which may need elevation depending on your machine's policy).
+So voice/chat via the PC are available whenever it's powered on, without remembering to run `bin/jarvis` by hand: on Windows/WSL2, a `.bat` in the Windows Startup folder (`shell:startup`, i.e. `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup`) running `wsl.exe -d <your-distro> -u <your-user> /path/to/bin/jarvis` at every login covers this without needing admin rights (unlike Task Scheduler, which may need elevation depending on your machine's policy).
+
+**Note:** `bin/jarvis` currently also opens a browser tab and an interactive Claude Code session — there's no headless "services only" variant yet (a hypothetical `bin/jarvis-services` splitting out just whisper/kokoro/HUD/bridge/tailscale serve). If you want fully silent unattended startup, that split still needs to be built.
 
 ## Vault (optional)
 
