@@ -128,6 +128,22 @@ def get_capabilities():
 
 # ── actions ──────────────────────────────────────────────────────────────────
 
+AUDIT_LOG_PATH = os.path.join(AGENT_DIR, "shell-audit.log")
+
+
+def _audit_shell(source_ip, cmd):
+    """`shell` is full remote code execution gated only by a token — log every
+    invocation (who, from where, what) so misuse is at least visible, even
+    though this doesn't prevent it. See vault/wiki/device-agent.md."""
+    line = f"{time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())} {source_ip} {cmd!r}\n"
+    sys.stderr.write(f"[agent:{DEVICE_NAME}] AUDIT shell from {source_ip}: {cmd!r}\n")
+    try:
+        with open(AUDIT_LOG_PATH, "a") as f:
+            f.write(line)
+    except OSError:
+        pass
+
+
 def execute_action(action, params):
     """Execute a device action. Returns (ok: bool, result: str)."""
 
@@ -237,10 +253,12 @@ class Handler(BaseHTTPRequestHandler):
         return bool(token) and token == CONFIG["token"]
 
     def _json(self, code, obj):
+        # No CORS headers: nothing in this repo calls /execute or /status from
+        # browser JS (only curl/Bash, which CORS doesn't apply to anyway), and
+        # this endpoint grants full shell — no reason to open that door.
         body = json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -280,6 +298,9 @@ class Handler(BaseHTTPRequestHandler):
         action = payload.get("action", "")
         params = payload.get("params", {})
 
+        if action == "shell":
+            _audit_shell(self.client_address[0], params.get("cmd", ""))
+
         try:
             ok, result = execute_action(action, params)
         except Exception as e:
@@ -289,9 +310,6 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
         self.end_headers()
 
     def log_message(self, fmt, *args):

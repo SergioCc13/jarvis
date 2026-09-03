@@ -1862,14 +1862,21 @@ function initChat(){
 
 /* ── SSE: real-time notices from bridge ─────────────────────────────── */
 
-function initEvents(){
+async function initEvents(){
   if(!_token()) return;
-  // Every other call uses an Authorization header instead of ?token= (avoids
-  // leaking it into logs/history), but the browser's native EventSource API
-  // can't set custom headers — this is the one place the token has to stay
-  // in the URL.
-  const url = `${BRIDGE_URL}/events?token=${encodeURIComponent(_token())}`;
-  const src = new EventSource(url);
+  // EventSource can't set custom headers, so instead of putting the
+  // long-lived bridge token in the URL (leaks into logs/history), fetch a
+  // single-use ticket (bearer-auth'd, dies in 30s or on first use — see
+  // GET /events/ticket in bridge/server.py) and put THAT in the URL instead.
+  let ticket;
+  try{
+    const r = await fetch(`${BRIDGE_URL}/events/ticket`, {
+      headers: {'Authorization': `Bearer ${_token()}`}
+    });
+    ({ ticket } = await r.json());
+  }catch(_){ /* fall through, retried below */ }
+  if(!ticket) return setTimeout(initEvents, 5000);
+  const src = new EventSource(`${BRIDGE_URL}/events?ticket=${encodeURIComponent(ticket)}`);
   src.onmessage = e => {
     try {
       const d = JSON.parse(e.data);

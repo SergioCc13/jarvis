@@ -14,6 +14,9 @@ agents/config.json
 # Device agent local env (contains Pi IP and bridge token — never commit)
 agents/.env
 
+# Device agent shell-action audit log — commands executed on this device
+agents/shell-audit.log
+
 # Notification channel credentials (Discord webhook, Telegram token, Twilio keys)
 bridge/.env
 

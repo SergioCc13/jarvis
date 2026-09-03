@@ -11,6 +11,7 @@ import json
 import os
 import queue
 import re
+import secrets
 import socket
 import subprocess
 import sys
@@ -43,12 +44,50 @@ def _push_event(payload: dict):
         except ValueError:
             pass
 
+
+# /events can't take the bearer token (browsers' EventSource can't set custom
+# headers), and a long-lived static token sitting in the URL is exactly what
+# we just moved every other endpoint away from. Trade-off: a ticket minted
+# via GET /events/ticket (bearer-authenticated) that's good for one
+# connection, expires in _EVENT_TICKET_TTL seconds, and is deleted on use —
+# so even if it ends up in a log line, it's already worthless.
+_event_ticket_lock = threading.Lock()
+_event_tickets: dict[str, float] = {}  # ticket -> expiry (unix ts)
+_EVENT_TICKET_TTL = 30
+
+
+def _mint_event_ticket() -> str:
+    with _event_ticket_lock:
+        now = time.time()
+        for t, exp in list(_event_tickets.items()):
+            if exp < now:
+                del _event_tickets[t]
+        ticket = secrets.token_hex(16)
+        _event_tickets[ticket] = now + _EVENT_TICKET_TTL
+        return ticket
+
+
+def _consume_event_ticket(ticket: str) -> bool:
+    with _event_ticket_lock:
+        expiry = _event_tickets.pop(ticket, None)
+    return expiry is not None and expiry >= time.time()
+
 BRIDGE_DIR = os.path.dirname(os.path.abspath(__file__))
 JARVIS_DIR = os.environ.get("JARVIS_DIR", os.path.dirname(BRIDGE_DIR))
 CONFIG_PATH = os.path.join(BRIDGE_DIR, "config.json")
 DEVICES_PATH = os.path.join(BRIDGE_DIR, "devices.json")
 TTS_VOICE = os.environ.get("JARVIS_TTS_VOICE", "ef_dora")
 PORT = 8792
+
+# ── CORS ──────────────────────────────────────────────────────────────────────
+# Used to be a blanket "Access-Control-Allow-Origin: *" on every response. On
+# its own that's not exploitable (auth is a bearer token, not a cookie), but it
+# meant ANY origin could ride a leaked/guessed token. JARVIS_ALLOWED_ORIGINS
+# (comma-separated, e.g. "https://raspberrypi.tailfe7913.ts.net") pins it down;
+# left unset, we still don't go back to "*" — fall back to reflecting the
+# request's own Origin only if it's an *.ts.net (Tailscale MagicDNS) origin,
+# which a public attacker site can't spoof.
+_ALLOWED_ORIGINS = [o.strip() for o in os.environ.get("JARVIS_ALLOWED_ORIGINS", "").split(",") if o.strip()]
 
 # Load bridge/.env so JARVIS_VOICE_BACKENDS and other vars are available
 def _load_env():
@@ -638,11 +677,23 @@ class Handler(BaseHTTPRequestHandler):
         auth = self.headers.get("Authorization", "")
         return auth[7:] if auth.startswith("Bearer ") else ""
 
+    def _cors_origin(self):
+        """Origin to echo back in Access-Control-Allow-Origin, or None to omit
+        the header entirely (same-origin requests don't need it anyway)."""
+        origin = self.headers.get("Origin", "")
+        if not origin:
+            return None
+        if _ALLOWED_ORIGINS:
+            return origin if origin in _ALLOWED_ORIGINS else None
+        return origin if origin.endswith(".ts.net") else None
+
     def _send_text(self, code, text):
         body = text.encode()
         self.send_response(code)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self._cors_origin()
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -651,7 +702,9 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self._cors_origin()
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -737,19 +790,28 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json(404, {"status": "unknown"})
         return self._send_json(200, job)
 
+    def _handle_events_ticket(self):
+        """GET /events/ticket — bearer-authenticated, mints a one-shot ticket
+        for _handle_events (see the comment on _event_tickets)."""
+        if self._bearer_token() != CONFIG["token"]:
+            return self._send_json(401, {"error": "unauthorized"})
+        return self._send_json(200, {"ticket": _mint_event_ticket()})
+
     def _handle_events(self):
-        # Only endpoint that still allows ?token= — the browser's native
-        # EventSource API cannot set custom headers, so there's no way for
-        # hud/index.html's `new EventSource(url)` to send a Bearer token.
-        # Header still takes priority for any future non-browser client.
+        # Real bearer token for any non-browser client; hud/index.html (whose
+        # EventSource can't set headers) uses a single-use ticket from
+        # GET /events/ticket instead — see _event_tickets above.
         qs = self.path.split("?", 1)[1] if "?" in self.path else ""
-        token = self._bearer_token() or urllib.parse.parse_qs(qs).get("token", [""])[0]
-        if token != CONFIG["token"]:
+        ticket = urllib.parse.parse_qs(qs).get("ticket", [""])[0]
+        authed = self._bearer_token() == CONFIG["token"] or (ticket and _consume_event_ticket(ticket))
+        if not authed:
             return self._send_json(401, {"error": "unauthorized"})
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self._cors_origin()
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
         self.end_headers()
         q: queue.Queue = queue.Queue(maxsize=50)
         _sse_clients.append(q)
@@ -774,6 +836,8 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
         if path == "/events":
             return self._handle_events()
+        if path == "/events/ticket":
+            return self._handle_events_ticket()
         if path == "/chat/result":
             return self._handle_chat_result()
         if path == "/version":
@@ -790,9 +854,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "POST, OPTIONS")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        origin = self._cors_origin()
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        # Authorization needed now that the token moved from ?token= to a
+        # header (see _bearer_token) — without this, browsers' CORS preflight
+        # rejects the real request before it's even sent.
+        self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
 
     def do_POST(self):
@@ -866,7 +935,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "audio/mpeg")
         self.send_header("X-Transcript", urllib.parse.quote(transcript))
         self.send_header("X-Reply", urllib.parse.quote(x_reply))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origin = self._cors_origin()
+        if origin:
+            self.send_header("Access-Control-Allow-Origin", origin)
         self.send_header("Access-Control-Expose-Headers", "X-Transcript, X-Reply")
         self.send_header("Content-Length", str(len(audio)))
         self.end_headers()
