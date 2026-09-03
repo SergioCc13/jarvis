@@ -38,19 +38,43 @@ git reset --hard origin/main -q
 
 CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null || true)
 
-# Restart bridge if server.py or notify.py changed
-if echo "$CHANGED" | grep -qE "^bridge/(server|notify)\.py"; then
-  if systemctl is-active --quiet jarvis-bridge 2>/dev/null; then
-    systemctl restart jarvis-bridge && echo "[auto-update] jarvis-bridge restarted"
-  elif sudo systemctl is-active --quiet jarvis-bridge 2>/dev/null; then
-    sudo systemctl restart jarvis-bridge && echo "[auto-update] jarvis-bridge restarted (sudo)"
+# Restart bridge if server.py or notify.py changed.
+# `systemctl restart` with no sudo always failed here even with a NOPASSWD
+# sudoers rule in place, because plain `systemctl restart` (no sudo) hits
+# polkit's interactive-auth prompt and just hangs/fails in a non-interactive
+# cron — it never even tries sudo. Try sudo -n (non-interactive: fails fast,
+# no hang, if NOPASSWD isn't set up) first, then fall back to plain.
+if echo "$CHANGED" | grep -qE "^bridge/(server|notify)\.py" && command -v systemctl >/dev/null 2>&1; then
+  if sudo -n systemctl restart jarvis-bridge 2>/dev/null; then
+    echo "[auto-update] jarvis-bridge restarted (sudo)"
+  elif systemctl restart jarvis-bridge 2>/dev/null; then
+    echo "[auto-update] jarvis-bridge restarted"
+  else
+    echo "[auto-update] could not restart jarvis-bridge — needs manual restart (see /etc/sudoers.d/jarvis-bridge-restart)"
   fi
 fi
 
 # Restart telegram bot if it changed
-if echo "$CHANGED" | grep -q "^bridge/telegram_bot.py"; then
-  systemctl restart jarvis-telegram 2>/dev/null || sudo systemctl restart jarvis-telegram 2>/dev/null || true
-  echo "[auto-update] jarvis-telegram restarted"
+if echo "$CHANGED" | grep -q "^bridge/telegram_bot.py" && command -v systemctl >/dev/null 2>&1; then
+  if sudo -n systemctl restart jarvis-telegram 2>/dev/null; then
+    echo "[auto-update] jarvis-telegram restarted (sudo)"
+  elif systemctl restart jarvis-telegram 2>/dev/null; then
+    echo "[auto-update] jarvis-telegram restarted"
+  else
+    echo "[auto-update] could not restart jarvis-telegram — needs manual restart"
+  fi
+fi
+
+# Restart the device agent if it changed. Mac runs it under launchd
+# (com.jarvis.device-agent); only acts if that label is actually loaded, so
+# this is a no-op on devices without the agent (e.g. the Pi).
+if echo "$CHANGED" | grep -q "^agents/device_agent\.py" && command -v launchctl >/dev/null 2>&1 \
+   && launchctl list 2>/dev/null | grep -q com.jarvis.device-agent; then
+  if launchctl kickstart -k "gui/$(id -u)/com.jarvis.device-agent" 2>/dev/null; then
+    echo "[auto-update] device_agent restarted (launchd)"
+  else
+    echo "[auto-update] could not restart device_agent — needs manual restart"
+  fi
 fi
 
 # HUD files (html/css/js) are served statically — no restart needed
