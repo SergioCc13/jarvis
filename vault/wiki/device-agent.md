@@ -24,11 +24,23 @@ cada 60 s. Expone `POST /execute` para que Jarvis controle el equipo por Tailsca
   [[fix-token-query-string]]). `_try_register()` manda `HUB_TOKEN` igual, por header.
 - **`JARVIS_AGENT_ALLOW_SHELL=0`** desactiva `shell` del todo.
 - Cuerpo POST ≤ 1 MiB; salida de shell recortada a 20k.
+- **`JARVIS_AGENT_SHELL_PIN`** (2026-09-03): segundo secreto, solo para
+  `action:"shell"`, separado del token del dispositivo — hay que mandarlo en
+  `params.pin`, comparación con `hmac.compare_digest` (tiempo constante).
+  Robar el token solo ya no alcanza para RCE. Auditoría de cada intento
+  (correcto o no) en `agents/shell-audit.log`. Recuperación si te olvidás el
+  PIN: `GET /pin-recover` (autenticado con el token) te lo manda por email —
+  usa `JARVIS_EMAIL_*` propio de `agents/.env`, TLS siempre verificado (sin el
+  fallback MITM-tolerante de `bridge/notify.py`, no corresponde para un
+  secreto). Blanco = `shell` sigue funcionando solo con el token, como antes.
 
 ## Riesgo residual
 
 `shell=True` por HTTP: aceptable solo porque está tras Tailscale y el token ya no
-puede filtrarse por URL/logs (ver [[fix-token-query-string]]). No exponer nunca fuera.
+puede filtrarse por URL/logs (ver [[fix-token-query-string]]). Con `JARVIS_AGENT_SHELL_PIN`
+configurado, un token filtrado ya no alcanza por sí solo — pero si el PIN se
+comparte por el mismo canal que el token (ej. ambos en el mismo mensaje), la
+protección extra se pierde. No exponer nunca fuera de la tailnet.
 
 ## Relacionado
 

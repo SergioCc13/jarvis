@@ -61,11 +61,13 @@ curl -s -X POST "http://<ip>:8793/execute" \
   -H "Content-Type: application/json" \
   -d '{"action":"notify","params":{"title":"Jarvis","message":"Hola desde el Pi"}}'
 
-# Run any shell command
+# Run any shell command — if that device has JARVIS_AGENT_SHELL_PIN set,
+# params.pin is required too (ask the user for it, don't guess/store it).
+# Wrong or missing PIN when one is configured returns ok:false, not a crash.
 curl -s -X POST "http://<ip>:8793/execute" \
   -H "X-Jarvis-Token: <token>" \
   -H "Content-Type: application/json" \
-  -d '{"action":"shell","params":{"cmd":"ls ~/Desktop"}}'
+  -d '{"action":"shell","params":{"cmd":"ls ~/Desktop","pin":"<shell pin, if set>"}}'
 
 # Get device status (battery, running apps, etc.)
 curl -s -H "X-Jarvis-Token: <token>" "http://<ip>:8793/status"
@@ -83,7 +85,13 @@ curl -s -H "X-Jarvis-Token: <token>" "http://<ip>:8793/status"
 | `screenshot` | `path` (optional) | mac |
 | `sleep` | — | mac, linux |
 | `get_status` | — | all |
-| `shell` | `cmd` | all |
+| `shell` | `cmd`, `pin` (if `JARVIS_AGENT_SHELL_PIN` is set on that device) | all |
+
+If `shell` comes back `ok:false` with a PIN-related message, ask the user for
+their PIN out loud/in chat rather than guessing — never try common PINs, and
+never store the PIN anywhere outside `agents/.env`. If they forgot it:
+`curl -s -H "X-Jarvis-Token: <token>" "http://<ip>:8793/pin-recover"` emails
+it to them (requires `JARVIS_EMAIL_*` configured on that device).
 
 ### Starting an agent on a device
 

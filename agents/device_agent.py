@@ -9,6 +9,7 @@ Usage:
     JARVIS_DEVICE_NAME=mac-sergio \
     python3 agents/device_agent.py
 """
+import hmac
 import json
 import os
 import socket
@@ -35,11 +36,63 @@ PLATFORM = sys.platform  # darwin | linux | win32
 #     logs / proxy logs / browser history, and this agent grants full shell,
 #     so that fallback was removed rather than kept
 #   - JARVIS_AGENT_ALLOW_SHELL=0 disables the raw `shell` action entirely
+#   - JARVIS_AGENT_SHELL_PIN, if set, is a second secret (separate from the
+#     device token) required in params.pin for action:"shell" specifically —
+#     stealing the token alone (e.g. from a leaked log) is no longer enough
+#     to get remote code execution. Not required for the other actions.
 #   - cap request bodies at 1 MiB
 ALLOW_SHELL = os.environ.get("JARVIS_AGENT_ALLOW_SHELL", "1") != "0"
+SHELL_PIN = os.environ.get("JARVIS_AGENT_SHELL_PIN", "")
 MAX_BODY = 1_048_576
 
+# Same names/behavior as bridge/notify.py's send_email — only used here for
+# GET /pin-recover (emails SHELL_PIN to yourself if you forget it). Needs its
+# own copy of these vars in *this device's* env, since device_agent doesn't
+# share bridge/server.py's process.
+EMAIL_FROM = os.environ.get("JARVIS_EMAIL_FROM", "")
+EMAIL_PASSWORD = os.environ.get("JARVIS_EMAIL_PASSWORD", "")
+EMAIL_TO = os.environ.get("JARVIS_EMAIL_TO", EMAIL_FROM)
+EMAIL_SMTP = os.environ.get("JARVIS_EMAIL_SMTP", "smtp.gmail.com")
+EMAIL_PORT = int(os.environ.get("JARVIS_EMAIL_PORT", "587"))
+
 HEARTBEAT_INTERVAL = 60   # seconds between registration retries / heartbeats
+
+
+def _send_pin_recovery_email():
+    """Emails the current shell PIN to JARVIS_EMAIL_TO. Gated by the device
+    token (see Handler.do_GET) — so only someone who already has that token
+    can trigger it, and even then the PIN lands in Sergio's own inbox, not
+    back to whoever made the request.
+
+    Always verifies the SMTP TLS certificate (no MITM-tolerant fallback like
+    bridge/notify.py's send_email uses — fine for routine notifications, not
+    for mailing a credential)."""
+    import smtplib
+    import ssl
+    from email.mime.text import MIMEText
+
+    if not (EMAIL_FROM and EMAIL_PASSWORD):
+        return False, "JARVIS_EMAIL_FROM / JARVIS_EMAIL_PASSWORD not set on this device"
+    if not SHELL_PIN:
+        return False, "JARVIS_AGENT_SHELL_PIN not set on this device"
+
+    msg = MIMEText(
+        f"PIN de 'shell' para el dispositivo '{DEVICE_NAME}': {SHELL_PIN}\n\n"
+        f"Pedido el {time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())}."
+    )
+    msg["Subject"] = f"Jarvis: recuperación de PIN — {DEVICE_NAME}"
+    msg["From"] = EMAIL_FROM
+    msg["To"] = EMAIL_TO
+
+    try:
+        with smtplib.SMTP(EMAIL_SMTP, EMAIL_PORT) as s:
+            s.ehlo()
+            s.starttls(context=ssl.create_default_context())
+            s.login(EMAIL_FROM, EMAIL_PASSWORD)
+            s.sendmail(EMAIL_FROM, EMAIL_TO, msg.as_string())
+        return True, f"enviado a {EMAIL_TO}"
+    except Exception as e:
+        return False, str(e)
 
 
 # ── config ──────────────────────────────────────────────────────────────────
@@ -150,6 +203,8 @@ def execute_action(action, params):
     if action == "shell":
         if not ALLOW_SHELL:
             return False, "shell deshabilitado (JARVIS_AGENT_ALLOW_SHELL=0)"
+        if SHELL_PIN and not hmac.compare_digest(str(params.get("pin", "")), SHELL_PIN):
+            return False, "PIN incorrecto o ausente (params.pin) — ver JARVIS_AGENT_SHELL_PIN"
         cmd = params.get("cmd", "")
         if not cmd:
             return False, "missing 'cmd'"
@@ -270,6 +325,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/status":
             ok, result = execute_action("get_status", {})
             return self._json(200, {"ok": ok, "result": json.loads(result) if ok else result})
+        if path == "/pin-recover":
+            ok, result = _send_pin_recovery_email()
+            return self._json(200 if ok else 500, {"ok": ok, "result": result})
         self._json(200, {
             "device": DEVICE_NAME,
             "platform": PLATFORM,
