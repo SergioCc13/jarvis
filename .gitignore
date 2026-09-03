@@ -43,3 +43,11 @@ vault/.obsidian/
 # Misc
 *.pyc
 __pycache__/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
