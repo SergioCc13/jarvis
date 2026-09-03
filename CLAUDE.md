@@ -33,36 +33,42 @@ Jarvis can control any registered device (Mac, PC, etc.) over Tailscale. Each de
 ```bash
 cat bridge/devices.json
 # or via HTTP:
-curl "http://localhost:8792/devices?token=<bridge-token>"
+curl -H "Authorization: Bearer <bridge-token>" "http://localhost:8792/devices"
 ```
 
 ### Dispatching a command to a device
 
 Use bash + curl to reach any device agent directly. The device URL and token are in `bridge/devices.json`.
+**Always send the token via header, never `?token=`** — query strings land in
+`journalctl`/access logs in plain text, and this endpoint grants full shell.
 
 ```bash
 # Open an app on the Mac
-curl -s -X POST "http://<device-tailscale-ip>:8793/execute?token=<device-token>" \
+curl -s -X POST "http://<device-tailscale-ip>:8793/execute" \
+  -H "X-Jarvis-Token: <device-token>" \
   -H "Content-Type: application/json" \
   -d '{"action":"open_app","params":{"app":"Spotify"}}'
 
 # Set volume
-curl -s -X POST "http://<ip>:8793/execute?token=<token>" \
+curl -s -X POST "http://<ip>:8793/execute" \
+  -H "X-Jarvis-Token: <token>" \
   -H "Content-Type: application/json" \
   -d '{"action":"volume","params":{"level":40}}'
 
 # Send a notification
-curl -s -X POST "http://<ip>:8793/execute?token=<token>" \
+curl -s -X POST "http://<ip>:8793/execute" \
+  -H "X-Jarvis-Token: <token>" \
   -H "Content-Type: application/json" \
   -d '{"action":"notify","params":{"title":"Jarvis","message":"Hola desde el Pi"}}'
 
 # Run any shell command
-curl -s -X POST "http://<ip>:8793/execute?token=<token>" \
+curl -s -X POST "http://<ip>:8793/execute" \
+  -H "X-Jarvis-Token: <token>" \
   -H "Content-Type: application/json" \
   -d '{"action":"shell","params":{"cmd":"ls ~/Desktop"}}'
 
 # Get device status (battery, running apps, etc.)
-curl -s "http://<ip>:8793/status?token=<token>"
+curl -s -H "X-Jarvis-Token: <token>" "http://<ip>:8793/status"
 ```
 
 ### Supported actions

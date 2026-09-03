@@ -1502,7 +1502,9 @@ async function _pollChatJob(jobId){
     await new Promise(res => setTimeout(res, 2000));
     if(JSON.parse(localStorage.getItem(CHAT_JOB_KEY) || 'null')?.id !== jobId) return;
     try{
-      const r = await fetch(`${BRIDGE_URL}/chat/result?token=${encodeURIComponent(_token())}&job_id=${encodeURIComponent(jobId)}`);
+      const r = await fetch(`${BRIDGE_URL}/chat/result?job_id=${encodeURIComponent(jobId)}`, {
+        headers: {'Authorization': `Bearer ${_token()}`}
+      });
       if(r.status === 404){
         _addMsg('error', 'La respuesta se perdió (el bridge se reinició) — probá de nuevo.');
         localStorage.removeItem(CHAT_JOB_KEY);
@@ -1527,9 +1529,9 @@ async function sendChat(text){
   if(!text) return;
   _addMsg('user', text);
   try{
-    const r = await fetch(`${BRIDGE_URL}/chat?token=${encodeURIComponent(_token())}`, {
+    const r = await fetch(`${BRIDGE_URL}/chat`, {
       method:'POST',
-      headers:{'Content-Type':'application/json'},
+      headers:{'Content-Type':'application/json', 'Authorization': `Bearer ${_token()}`},
       body: JSON.stringify({text})
     });
     const data = await r.json();
@@ -1592,10 +1594,12 @@ async function sendImages(caption){
     let last = null;
     for(let i=0;i<items.length;i++){
       const it = items[i];
-      const q = new URLSearchParams({ token:_token(), batch_id:batchId, total:String(total) });
+      const q = new URLSearchParams({ batch_id:batchId, total:String(total) });
       if(i === 0 && caption) q.set('text', caption);
       const r = await fetch(`${BRIDGE_URL}/chat/image?${q.toString()}`, {
-        method:'POST', headers:{'Content-Type': it.file.type || 'image/jpeg'}, body: it.file
+        method:'POST',
+        headers:{'Content-Type': it.file.type || 'image/jpeg', 'Authorization': `Bearer ${_token()}`},
+        body: it.file
       });
       last = await r.json();
       if(last.error) throw new Error(last.error);
@@ -1698,9 +1702,9 @@ async function _sendVoice(){
   _setChatState('thinking');
   const blob = new Blob(_audioChunks, {type:'audio/webm'});
   try{
-    const r = await fetch(`${BRIDGE_URL}/voice?token=${encodeURIComponent(_token())}`, {
+    const r = await fetch(`${BRIDGE_URL}/voice`, {
       method:'POST',
-      headers:{'Content-Type':'audio/webm'},
+      headers:{'Content-Type':'audio/webm', 'Authorization': `Bearer ${_token()}`},
       body: blob
     });
     if(!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1860,6 +1864,10 @@ function initChat(){
 
 function initEvents(){
   if(!_token()) return;
+  // Every other call uses an Authorization header instead of ?token= (avoids
+  // leaking it into logs/history), but the browser's native EventSource API
+  // can't set custom headers — this is the one place the token has to stay
+  // in the URL.
   const url = `${BRIDGE_URL}/events?token=${encodeURIComponent(_token())}`;
   const src = new EventSource(url);
   src.onmessage = e => {

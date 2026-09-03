@@ -9,8 +9,10 @@ summary: Servidor HTTP hub en el puerto 8792 — voz, chat, registro de disposit
 # Bridge — `bridge/server.py`
 
 Servidor HTTP plano (`ThreadingHTTPServer`) en `127.0.0.1:8792`. El teléfono llega por
-`tailscale serve` (termina HTTPS; el micro necesita contexto seguro). Todo autentica con
-`?token=` contra `bridge/config.json`.
+`tailscale serve` (termina HTTPS; el micro necesita contexto seguro). Todo autentica contra
+`bridge/config.json` con header `Authorization: Bearer <token>` — salvo `/events`, que sigue
+aceptando `?token=` porque el `EventSource` nativo del navegador no puede mandar headers
+propios (arreglado 2026-09-03, [[fix-token-query-string]]).
 
 ## Rutas
 

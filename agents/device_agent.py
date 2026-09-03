@@ -30,8 +30,10 @@ PLATFORM = sys.platform  # darwin | linux | win32
 
 # This agent runs arbitrary shell over HTTP, so keep the exposure tight:
 #   - bind to the Tailscale IP, not 0.0.0.0 (override with JARVIS_AGENT_BIND)
-#   - accept the token in an X-Jarvis-Token header, not only the query string
-#     (query strings leak into logs / proxy logs / history)
+#   - accept the token ONLY via the X-Jarvis-Token header — a query-string
+#     ?token= fallback used to exist "for compat" but query strings leak into
+#     logs / proxy logs / browser history, and this agent grants full shell,
+#     so that fallback was removed rather than kept
 #   - JARVIS_AGENT_ALLOW_SHELL=0 disables the raw `shell` action entirely
 #   - cap request bodies at 1 MiB
 ALLOW_SHELL = os.environ.get("JARVIS_AGENT_ALLOW_SHELL", "1") != "0"
@@ -82,12 +84,12 @@ def _try_register():
         "token": CONFIG["token"],
         "capabilities": get_capabilities(),
     }).encode()
-    url = f"{HUB_URL}/register"
+    headers = {"Content-Type": "application/json"}
     if HUB_TOKEN:
-        url += f"?token={HUB_TOKEN}"
+        headers["Authorization"] = f"Bearer {HUB_TOKEN}"
     req = urllib.request.Request(
-        url, data=payload,
-        headers={"Content-Type": "application/json"},
+        f"{HUB_URL}/register", data=payload,
+        headers=headers,
         method="POST",
     )
     urllib.request.urlopen(req, timeout=10)
@@ -229,12 +231,9 @@ def execute_action(action, params):
 
 class Handler(BaseHTTPRequestHandler):
     def _auth(self):
-        import urllib.parse
-        # header first (doesn't leak into logs); query string kept for compat
+        # Header only — see the module-level comment on why the old
+        # query-string ?token= fallback was removed rather than kept.
         token = self.headers.get("X-Jarvis-Token", "")
-        if not token:
-            qs = self.path.split("?", 1)[1] if "?" in self.path else ""
-            token = urllib.parse.parse_qs(qs).get("token", [""])[0]
         return bool(token) and token == CONFIG["token"]
 
     def _json(self, code, obj):

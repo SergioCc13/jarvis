@@ -630,6 +630,14 @@ def for_speech(text, max_sentences=3, max_chars=360):
 
 
 class Handler(BaseHTTPRequestHandler):
+    def _bearer_token(self):
+        """Token from the Authorization header. Query-string ?token= used to be
+        the only option, but it leaks into journalctl/access logs and browser
+        history — every endpoint except /events (see _handle_events) now takes
+        the token exclusively via header."""
+        auth = self.headers.get("Authorization", "")
+        return auth[7:] if auth.startswith("Bearer ") else ""
+
     def _send_text(self, code, text):
         body = text.encode()
         self.send_response(code)
@@ -649,10 +657,7 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _handle_chat(self):
-        qs = self.path.split("?", 1)[1] if "?" in self.path else ""
-        params = urllib.parse.parse_qs(qs)
-        token = (params.get("token") or [""])[0]
-        if token != CONFIG["token"]:
+        if self._bearer_token() != CONFIG["token"]:
             return self._send_json(401, {"error": "unauthorized"})
 
         length = int(self.headers.get("Content-Length", 0))
@@ -674,12 +679,11 @@ class Handler(BaseHTTPRequestHandler):
         # el cliente sube una por request con ?batch_id= y ?total=; el bridge
         # las guarda en bridge/hud_media/ y, cuando llegan todas, se las pasa a
         # Claude (que las abre con su herramienta de lectura de archivos).
-        qs = self.path.split("?", 1)[1] if "?" in self.path else ""
-        params = urllib.parse.parse_qs(qs)
-        token = (params.get("token") or [""])[0]
-        if token != CONFIG["token"]:
+        if self._bearer_token() != CONFIG["token"]:
             return self._send_json(401, {"error": "unauthorized"})
 
+        qs = self.path.split("?", 1)[1] if "?" in self.path else ""
+        params = urllib.parse.parse_qs(qs)
         text = (params.get("text") or [""])[0].strip()
         batch_id = (params.get("batch_id") or [""])[0] or uuid.uuid4().hex
         try:
@@ -723,11 +727,10 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json(202, {"job_id": job_id, "status": "pending"})
 
     def _handle_chat_result(self):
+        if self._bearer_token() != CONFIG["token"]:
+            return self._send_json(401, {"error": "unauthorized"})
         qs = self.path.split("?", 1)[1] if "?" in self.path else ""
         params = urllib.parse.parse_qs(qs)
-        token = (params.get("token") or [""])[0]
-        if token != CONFIG["token"]:
-            return self._send_json(401, {"error": "unauthorized"})
         job_id = (params.get("job_id") or [""])[0]
         job = _job_snapshot(job_id)
         if not job:
@@ -735,8 +738,12 @@ class Handler(BaseHTTPRequestHandler):
         return self._send_json(200, job)
 
     def _handle_events(self):
+        # Only endpoint that still allows ?token= — the browser's native
+        # EventSource API cannot set custom headers, so there's no way for
+        # hud/index.html's `new EventSource(url)` to send a Bearer token.
+        # Header still takes priority for any future non-browser client.
         qs = self.path.split("?", 1)[1] if "?" in self.path else ""
-        token = urllib.parse.parse_qs(qs).get("token", [""])[0]
+        token = self._bearer_token() or urllib.parse.parse_qs(qs).get("token", [""])[0]
         if token != CONFIG["token"]:
             return self._send_json(401, {"error": "unauthorized"})
         self.send_response(200)
@@ -776,12 +783,10 @@ class Handler(BaseHTTPRequestHandler):
                 h = "unknown"
             return self._send_json(200, {"hash": h})
         if path == "/devices":
-            qs = self.path.split("?", 1)[1] if "?" in self.path else ""
-            token = urllib.parse.parse_qs(qs).get("token", [""])[0]
-            if token != CONFIG["token"]:
+            if self._bearer_token() != CONFIG["token"]:
                 return self._send_json(401, {"error": "unauthorized"})
             return self._send_json(200, load_devices())
-        return self._send_text(200, "Jarvis voice bridge is running. POST audio to /voice?token=... or JSON to /chat?token=...")
+        return self._send_text(200, "Jarvis voice bridge is running. POST audio to /voice or JSON to /chat, both with 'Authorization: Bearer <token>'.")
 
     def do_OPTIONS(self):
         self.send_response(204)
@@ -799,9 +804,7 @@ class Handler(BaseHTTPRequestHandler):
         path = self.path.split("?")[0]
 
         if path == "/register":
-            qs = self.path.split("?", 1)[1] if "?" in self.path else ""
-            reg_token = urllib.parse.parse_qs(qs).get("token", [""])[0]
-            if reg_token != CONFIG["token"]:
+            if self._bearer_token() != CONFIG["token"]:
                 return self._send_json(401, {"error": "unauthorized"})
             length = int(self.headers.get("Content-Length", 0))
             if not length:
@@ -821,10 +824,7 @@ class Handler(BaseHTTPRequestHandler):
         if path not in ("/", "/voice"):
             return self._send_text(404, "not found")
 
-        qs = self.path.split("?", 1)[1] if "?" in self.path else ""
-        params = urllib.parse.parse_qs(qs)
-        token = (params.get("token") or [""])[0]
-        if token != CONFIG["token"]:
+        if self._bearer_token() != CONFIG["token"]:
             return self._send_text(401, "unauthorized")
 
         length = int(self.headers.get("Content-Length", 0))

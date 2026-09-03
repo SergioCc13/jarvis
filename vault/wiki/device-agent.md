@@ -19,13 +19,16 @@ cada 60 s. Expone `POST /execute` para que Jarvis controle el equipo por Tailsca
 ## Endurecimiento ([[pr-6-hardening]])
 
 - Bind a la **IP de Tailscale** en vez de `0.0.0.0` (`JARVIS_AGENT_BIND` para forzar).
-- Token también por cabecera **`X-Jarvis-Token`** (la query string se filtra a logs); `?token=` sigue.
+- Token **solo** por cabecera `X-Jarvis-Token` (2026-09-03: se quitó el fallback
+  `?token=` que quedaba "por compat" — la query string se filtra a logs, ver
+  [[fix-token-query-string]]). `_try_register()` manda `HUB_TOKEN` igual, por header.
 - **`JARVIS_AGENT_ALLOW_SHELL=0`** desactiva `shell` del todo.
 - Cuerpo POST ≤ 1 MiB; salida de shell recortada a 20k.
 
 ## Riesgo residual
 
-`shell=True` por HTTP: aceptable solo porque está tras Tailscale. No exponer nunca fuera.
+`shell=True` por HTTP: aceptable solo porque está tras Tailscale y el token ya no
+puede filtrarse por URL/logs (ver [[fix-token-query-string]]). No exponer nunca fuera.
 
 ## Relacionado
 
