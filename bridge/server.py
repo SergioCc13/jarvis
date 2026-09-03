@@ -468,12 +468,16 @@ def _cloud_fallback(text, claude_err):
         f"[bridge] Claude failed ({type(claude_err).__name__}: {claude_err}); "
         f"trying cloud ({CLOUD_MODEL})\n"
     )
+    # Ask first — only mark the tier "active" (and notify) once it actually
+    # replies. Setting the flag before the call meant a failed attempt left
+    # it stuck True, silently skipping the switch notice on the next success.
+    reply = _ask_cloud(text)
     if not _cloud_active:
         _cloud_active = True
         msg = f"Claude no disponible. Usando {CLOUD_MODEL} (nube)."
         _notify_async("⚠️ " + msg)
         _push_event({"type": "notice", "text": "⚠️ " + msg})
-    return _ask_cloud(text)
+    return reply
 
 
 def _ollama_fallback(text, claude_err):
@@ -499,17 +503,20 @@ def _ollama_fallback(text, claude_err):
             f"[bridge] Claude failed ({type(claude_err).__name__}: {claude_err}); "
             f"trying Ollama ({model}) on {ip}\n"
         )
+        # Ask first — only mark the tier "active" (and notify) once it actually
+        # replies, same reasoning as _cloud_fallback above.
+        try:
+            reply = _ask_ollama(ip, text, model)
+        except Exception as e:
+            sys.stderr.write(f"[bridge] Ollama {ip} failed: {e}\n")
+            tried.append(str(e))
+            continue
         if not _ollama_active:
             _ollama_active = True
             msg = f"Claude no disponible. Usando Ollama ({model}) en {where}."
             _notify_async("⚠️ " + msg)
             _push_event({"type": "notice", "text": "⚠️ " + msg})
-        try:
-            return _ask_ollama(ip, text, model)
-        except Exception as e:
-            sys.stderr.write(f"[bridge] Ollama {ip} failed: {e}\n")
-            tried.append(str(e))
-            continue
+        return reply
     raise RuntimeError(
         "Claude failed and no Ollama backend answered — "
         + " | ".join(tried or ["JARVIS_OLLAMA_BACKENDS is empty"])
