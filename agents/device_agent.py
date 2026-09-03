@@ -119,11 +119,19 @@ CONFIG = load_config()
 # ── registration ─────────────────────────────────────────────────────────────
 
 def get_tailscale_ip():
-    try:
-        r = subprocess.run(["tailscale", "ip", "-4"], capture_output=True, text=True, timeout=5)
-        return r.stdout.strip()
-    except Exception:
-        return None
+    # WSL with mirrored networking has no native `tailscale` binary — only
+    # Windows' tailscale.exe, reachable via PATH interop. Without this
+    # fallback, a WSL device silently fell through to binding 0.0.0.0 (every
+    # interface, LAN included) instead of just the Tailscale IP.
+    for binary in ("tailscale", "tailscale.exe"):
+        try:
+            r = subprocess.run([binary, "ip", "-4"], capture_output=True, text=True, timeout=5)
+            ip = r.stdout.strip()
+            if ip:
+                return ip
+        except Exception:
+            continue
+    return None
 
 
 def _try_register():
