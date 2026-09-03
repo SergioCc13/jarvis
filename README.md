@@ -6,6 +6,15 @@ A personal voice assistant built on [Claude Code](https://claude.com/claude-code
 - Watch a HUD (habits, agenda, skills, an animated voice "orb") in the browser.
 - Optionally use that same HUD from your phone over your Tailscale network — text and voice both live in the HUD's chat panel, sharing the phone's own persistent conversation, separate from your terminal session. The HUD is the only page: it installs as a PWA and adapts its layout for phone and laptop.
 
+## Contents
+
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Setup](#setup)
+- [Auto-start on PC boot](#auto-start-on-pc-boot-optional)
+- [Vault](#vault-optional)
+- [License](#license)
+
 ## How it works
 
 ```
