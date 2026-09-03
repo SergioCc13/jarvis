@@ -66,14 +66,24 @@ if echo "$CHANGED" | grep -q "^bridge/telegram_bot.py" && command -v systemctl >
 fi
 
 # Restart the device agent if it changed. Mac runs it under launchd
-# (com.jarvis.device-agent); only acts if that label is actually loaded, so
-# this is a no-op on devices without the agent (e.g. the Pi).
-if echo "$CHANGED" | grep -q "^agents/device_agent\.py" && command -v launchctl >/dev/null 2>&1 \
-   && launchctl list 2>/dev/null | grep -q com.jarvis.device-agent; then
-  if launchctl kickstart -k "gui/$(id -u)/com.jarvis.device-agent" 2>/dev/null; then
-    echo "[auto-update] device_agent restarted (launchd)"
-  else
-    echo "[auto-update] could not restart device_agent — needs manual restart"
+# (com.jarvis.device-agent); Linux (Pi, PC-under-WSL) runs it under systemd
+# as "jarvis-agent". Each branch only acts if that service actually exists,
+# so this is a no-op on devices without the agent installed.
+if echo "$CHANGED" | grep -q "^agents/device_agent\.py"; then
+  if command -v launchctl >/dev/null 2>&1 && launchctl list 2>/dev/null | grep -q com.jarvis.device-agent; then
+    if launchctl kickstart -k "gui/$(id -u)/com.jarvis.device-agent" 2>/dev/null; then
+      echo "[auto-update] device_agent restarted (launchd)"
+    else
+      echo "[auto-update] could not restart device_agent — needs manual restart"
+    fi
+  elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files jarvis-agent.service >/dev/null 2>&1; then
+    if sudo -n systemctl restart jarvis-agent 2>/dev/null; then
+      echo "[auto-update] jarvis-agent restarted (sudo)"
+    elif systemctl restart jarvis-agent 2>/dev/null; then
+      echo "[auto-update] jarvis-agent restarted"
+    else
+      echo "[auto-update] could not restart jarvis-agent — needs manual restart (see /etc/sudoers.d/jarvis-bridge-restart)"
+    fi
   fi
 fi
 
