@@ -1,5 +1,7 @@
 # Jarvis
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 A personal voice assistant built on [Claude Code](https://claude.com/claude-code) + the [voicemode MCP](https://github.com/mbailey/voicemode) (local Whisper STT + Kokoro TTS), with a live HUD dashboard and optional phone access over [Tailscale](https://tailscale.com).
 
 - Talk to it locally through Claude Code's voice tools.
