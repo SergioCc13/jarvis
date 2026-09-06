@@ -12,7 +12,6 @@ A `# === Jarvis ===` block in the crontab, installed/updated by `bin/install-pi`
 
 | When | Job | Note |
 |---|---|---|
-| `*/5 * * * *` | `bin/auto-update` | git pull + restart of affected services |
 | `*/5 * * * *` | `bin/watchdog` | see [[watchdog]] |
 | `*/30 * * * *` | `bin/check-reminders` | see [[watchdog]] |
 | `30 7 * * *` | `bin/vault-refresh` | see [[vault-refresh]] |
@@ -20,6 +19,10 @@ A `# === Jarvis ===` block in the crontab, installed/updated by `bin/install-pi`
 | `0 8 * * *` | `bin/seguimiento` | see [[seguimiento]] |
 | `0 7 * * *` (today) → Monday/quick | `bin/analiza` | see [[mercado]] · changed by [[pr-2-mercado-cadencia]] |
 | `0 18 * * 5` | `bin/seguimiento score` | filter diagnostic |
+
+**No auto-update** (removed 2026-09-06): updates are manual — `cd ~/jarvis && git pull`
+on each device when you want the latest. There used to be a `*/5 * * * * bin/auto-update`
+that ran `git reset --hard origin/main` with no verification (see [[fix-token-query-string]]).
 
 ## Pending ([[ideas-pendientes]])
 

@@ -53,9 +53,10 @@ remote shell), a log leak gave a path to command execution without even being on
   anyone on the same WiFi/LAN. Real mitigation: a firewall rule (Windows/macOS/Linux depending
   on the device) that only allows those ports from the Tailscale range — not applied, it's a
   live system change to decide carefully, not something to touch lightly.
-- `bin/auto-update`'s trust model: it does `git reset --hard origin/main` with no verification
-  and now does restart services reliably — if the GitHub account `SergioCc13` is compromised,
-  the code lands and runs on its own within ≤5 min. Mitigation outside this repo: enable 2FA on
-  the GitHub account, consider branch protection on `main`.
+- `bin/auto-update`'s trust model: it ran `git reset --hard origin/main` with no verification
+  every 5 min — if the GitHub account `SergioCc13` were compromised, the code would land and run
+  on its own within ≤5 min. **Removed 2026-09-06** (`bin/auto-update` deleted, cron/LaunchAgent
+  gone): updates are now manual (`git pull` per device). 2FA on the GitHub account and branch
+  protection on `main` are still worth setting up.
 
 See [[bridge]] · [[device-agent]].
