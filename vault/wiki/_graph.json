@@ -1,6 +1,6 @@
 {
-  "generated": "2026-09-06T19:45:14Z",
-  "note_count": 24,
+  "generated": "2026-09-06T21:35:10Z",
+  "note_count": 25,
   "nodes": [
     {
       "id": "bridge",
@@ -354,6 +354,26 @@
         "sesion-claude",
         "device-agent",
         "vault-refresh"
+      ]
+    },
+    {
+      "id": "pr-9-fallback-nube",
+      "title": "\"PR #9 — cloud fallback\"",
+      "summary": "Adds a free-cloud tier (Groq/Gemini/OpenRouter) before Ollama, plus per-device model selection.",
+      "tags": [
+        "pr",
+        "llm"
+      ],
+      "status": "open",
+      "updated": "2026-09-02",
+      "file": "pr-9-fallback-nube.md",
+      "links": [
+        "ollama-fallback",
+        "telegram",
+        "pr-5-telegram-ollama-jobs",
+        "ideas-pendientes",
+        "bridge",
+        "coste-tokens"
       ]
     },
     {
@@ -777,6 +797,10 @@
     ],
     [
       "ollama-fallback",
+      "pr-9-fallback-nube"
+    ],
+    [
+      "ollama-fallback",
       "telegram"
     ],
     [
@@ -870,6 +894,30 @@
     [
       "pr-6-hardening",
       "vault-refresh"
+    ],
+    [
+      "pr-9-fallback-nube",
+      "bridge"
+    ],
+    [
+      "pr-9-fallback-nube",
+      "coste-tokens"
+    ],
+    [
+      "pr-9-fallback-nube",
+      "ideas-pendientes"
+    ],
+    [
+      "pr-9-fallback-nube",
+      "ollama-fallback"
+    ],
+    [
+      "pr-9-fallback-nube",
+      "pr-5-telegram-ollama-jobs"
+    ],
+    [
+      "pr-9-fallback-nube",
+      "telegram"
     ],
     [
       "seguimiento",
