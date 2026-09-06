@@ -315,7 +315,7 @@ def jobs(query: str, lugar: str = "España") -> str:
         f"keyword={urllib.parse.quote(query)}"
     )
 
-    # ── Indeed España ────────────────────────────────────────────────
+    # ── Indeed Spain ─────────────────────────────────────────────────
     try:
         html = _fetch(indeed_url, as_json=False)
         results.extend(_parse_indeed(html))

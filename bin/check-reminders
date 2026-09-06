@@ -77,7 +77,7 @@ def notify(message, env):
         )
         return True
     except (subprocess.TimeoutExpired, OSError) as e:
-        print(f"[reminders] notify.py falló: {e}")
+        print(f"[reminders] notify.py failed: {e}")
         return False
 
 
