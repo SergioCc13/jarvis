@@ -1,28 +1,28 @@
 ---
-title: Notificaciones
-tags: [subsistema, red]
-status: activo
+title: Notifications
+tags: [subsystem, network]
+status: active
 updated: 2026-09-01
-summary: bridge/notify.py — Discord / Telegram / email desde un solo dispatch().
+summary: bridge/notify.py — Discord / Telegram / email from a single dispatch().
 ---
 
-# Notificaciones — `bridge/notify.py`
+# Notifications — `bridge/notify.py`
 
-`dispatch(mensaje, channels=[...], subject=...)`. Canales según env: `JARVIS_DISCORD_WEBHOOK`,
-`JARVIS_TELEGRAM_TOKEN`+`_CHAT_ID`, `JARVIS_EMAIL_*` (Gmail App Password). `_urlopen` reintenta
-verificado→sin-verificar (redes con MITM corporativo).
+`dispatch(message, channels=[...], subject=...)`. Channels depend on env: `JARVIS_DISCORD_WEBHOOK`,
+`JARVIS_TELEGRAM_TOKEN`+`_CHAT_ID`, `JARVIS_EMAIL_*` (Gmail App Password). `_urlopen` retries
+verified→unverified (networks with a corporate MITM).
 
-Lo usan [[watchdog]], [[seguimiento]], [[mercado]], `bin/morning-brief`, `bin/check-reminders`.
+Used by [[watchdog]], [[seguimiento]], [[mercado]], `bin/morning-brief`, `bin/check-reminders`.
 
-## Arreglos de [[pr-4-bugs-varios]]
+## Fixes from [[pr-4-bugs-varios]]
 
-- `send_telegram`: Telegram corta `sendMessage` en 4096 chars y fallaba mudo. Ahora
-  **trocea** por líneas a ≤4000 y, si Telegram responde error, devuelve código + cuerpo.
+- `send_telegram`: Telegram caps `sendMessage` at 4096 chars and it failed silently. Now it
+  **splits** on line boundaries to ≤4000 and, if Telegram returns an error, gives back code + body.
 
-## Pendiente
+## Pending
 
-- `send_email` no adjunta ficheros → lo añade [[pr-2-mercado-cadencia]] (para el gráfico).
+- `send_email` doesn't attach files → added by [[pr-2-mercado-cadencia]] (for the chart).
 
-## Relacionado
+## Related
 
 [[telegram]] · [[watchdog]] · [[cron]] · [[pr-4-bugs-varios]]

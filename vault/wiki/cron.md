@@ -1,32 +1,32 @@
 ---
-title: Cron de la Pi
-tags: [subsistema, ops]
-status: activo
+title: Pi cron
+tags: [subsystem, ops]
+status: active
 updated: 2026-09-01
-summary: Qué corre y cuándo en la Raspberry Pi; lo instala bin/install-pi.
+summary: What runs and when on the Raspberry Pi; installed by bin/install-pi.
 ---
 
-# Cron de la Pi
+# Pi cron
 
-Bloque `# === Jarvis ===` en el crontab, instalado/actualizado por `bin/install-pi`.
+A `# === Jarvis ===` block in the crontab, installed/updated by `bin/install-pi`.
 
-| Cuándo | Job | Nota |
+| When | Job | Note |
 |---|---|---|
-| `*/5 * * * *` | `bin/auto-update` | git pull + reinicio de servicios afectados |
-| `*/5 * * * *` | `bin/watchdog` | ver [[watchdog]] |
-| `*/30 * * * *` | `bin/check-reminders` | ver [[watchdog]] |
-| `30 7 * * *` | `bin/vault-refresh` | ver [[vault-refresh]] |
-| `0 8 * * *` | `bin/morning-brief` | resumen matutino |
-| `0 8 * * *` | `bin/seguimiento` | ver [[seguimiento]] |
-| `0 7 * * *` (hoy) → lunes/rápido | `bin/analiza` | ver [[mercado]] · lo cambia [[pr-2-mercado-cadencia]] |
-| `0 18 * * 5` | `bin/seguimiento score` | diagnóstico del filtro |
+| `*/5 * * * *` | `bin/auto-update` | git pull + restart of affected services |
+| `*/5 * * * *` | `bin/watchdog` | see [[watchdog]] |
+| `*/30 * * * *` | `bin/check-reminders` | see [[watchdog]] |
+| `30 7 * * *` | `bin/vault-refresh` | see [[vault-refresh]] |
+| `0 8 * * *` | `bin/morning-brief` | morning summary |
+| `0 8 * * *` | `bin/seguimiento` | see [[seguimiento]] |
+| `0 7 * * *` (today) → Monday/quick | `bin/analiza` | see [[mercado]] · changed by [[pr-2-mercado-cadencia]] |
+| `0 18 * * 5` | `bin/seguimiento score` | filter diagnostic |
 
-## Pendiente ([[ideas-pendientes]])
+## Pending ([[ideas-pendientes]])
 
-Varios jobs chocan a las `0 8` (brief + seguimiento) y cerca de las 7 → escalonar 2-3 min
-para no reventar el rate-limit de Yahoo/CoinGecko. Aparcado hasta mergear [[pr-2-mercado-cadencia]]
-(toca las mismas líneas de `bin/install-pi`).
+Several jobs collide at `0 8` (brief + seguimiento) and near 7 → stagger them 2-3 min apart so
+they don't blow Yahoo/CoinGecko's rate limit. Parked until [[pr-2-mercado-cadencia]] merges
+(it touches the same `bin/install-pi` lines).
 
-## Relacionado
+## Related
 
 [[mercado]] · [[seguimiento]] · [[watchdog]] · [[vault-refresh]]
