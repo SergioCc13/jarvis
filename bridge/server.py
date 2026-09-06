@@ -164,9 +164,9 @@ def save_config(cfg):
 
 CONFIG = load_config()
 
-# ── fotos desde el HUD (POST /chat/image) ────────────────────────────────────
-# Varias imágenes = un mensaje: el cliente sube una por request compartiendo
-# ?batch_id= y el análisis solo se dispara al llegar la ?total=.
+# ── photos from the HUD (POST /chat/image) ──────────────────────────────────
+# Several images = one message: the client uploads one per request sharing
+# ?batch_id= and analysis only fires once ?total= is reached.
 HUD_MEDIA_DIR = os.path.join(BRIDGE_DIR, "hud_media")
 _image_batches = {}                 # batch_id -> {"paths": [...], "text": str}
 _image_batch_lock = threading.Lock()
@@ -182,7 +182,7 @@ _IMG_EXT = {"image/png": ".png", "image/webp": ".webp", "image/gif": ".gif",
 # backgrounding/reloading (fire the message, come back later, like Telegram).
 # A single global slot dropped the earlier reply whenever a second message was
 # sent before the first finished (the poller for the first then got a 404 —
-# "la respuesta se perdió"). Keep the last few jobs, keyed by id.
+# "the reply was lost"). Keep the last few jobs, keyed by id.
 _job_lock = threading.Lock()
 _jobs: dict[str, dict] = {}
 _JOBS_MAX = 8
