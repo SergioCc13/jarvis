@@ -1,68 +1,62 @@
 ---
-title: "Fix — tokens fuera de la query string"
+title: "Fix — tokens out of the query string"
 tags: [fix, seguridad]
-status: cerrado
+status: closed
 updated: 2026-09-03
-summary: Bridge, device_agent y HUB_TOKEN dejan de mandar el token por ?token= (salvo /events) — se filtraba en journalctl/logs.
+summary: Bridge, device_agent and HUB_TOKEN stop sending the token via ?token= (except /events) — it leaked into journalctl/logs.
 ---
 
-# Fix — tokens fuera de la query string
+# Fix — tokens out of the query string
 
-**Motivo:** `?token=...` en la URL queda en texto plano en `journalctl -u jarvis-bridge`
-(confirmado en vivo el 2026-09-03) y en cualquier log de acceso. Combinado con
-[[device-agent]] (shell remoto arbitrario), una filtración de log daba un camino a
-ejecución de comandos sin necesidad de estar en la tailnet.
+**Why:** `?token=...` in the URL ends up in plain text in `journalctl -u jarvis-bridge`
+(confirmed live 2026-09-03) and in any access log. Combined with [[device-agent]] (arbitrary
+remote shell), a log leak gave a path to command execution without even being on the tailnet.
 
-## Cambios
+## Changes
 
-- **`bridge/server.py`:** nuevo `Handler._bearer_token()` (lee `Authorization: Bearer
-  <token>`). Todos los endpoints lo usan — `/chat`, `/chat/image`, `/chat/result`,
-  `/devices`, `/register`, `/voice`, `/`. Único endpoint que conserva `?token=` como
-  fallback: `/events`, porque el `EventSource` nativo del navegador no puede mandar
-  headers propios.
-- **`agents/device_agent.py`:** se eliminó el fallback `?token=` que quedaba "por
-  compat" — ahora solo header `X-Jarvis-Token`. `_try_register()` manda `HUB_TOKEN`
-  como `Authorization: Bearer` en vez de en la URL de `/register`.
-- **`hud/index.html`:** los 4 `fetch()` (`/chat`, `/chat/result`, `/chat/image`,
-  `/voice`) pasan a header `Authorization`. `/events` se queda igual (ver arriba).
-- **`CLAUDE.md`:** ejemplos de `curl` para despachar comandos a dispositivos
-  actualizados a `-H "X-Jarvis-Token: ..."` / `-H "Authorization: Bearer ..."`.
+- **`bridge/server.py`:** new `Handler._bearer_token()` (reads `Authorization: Bearer
+  <token>`). Every endpoint uses it — `/chat`, `/chat/image`, `/chat/result`, `/devices`,
+  `/register`, `/voice`, `/`. The only endpoint that keeps `?token=` as a fallback: `/events`,
+  because the browser's native `EventSource` can't send custom headers.
+- **`agents/device_agent.py`:** the `?token=` fallback that lingered "for compat" was removed —
+  now header `X-Jarvis-Token` only. `_try_register()` sends `HUB_TOKEN` as
+  `Authorization: Bearer` instead of in the `/register` URL.
+- **`hud/index.html`:** all 4 `fetch()` calls (`/chat`, `/chat/result`, `/chat/image`,
+  `/voice`) move to an `Authorization` header. `/events` stays as-is (see above).
+- **`CLAUDE.md`:** the `curl` examples for dispatching commands to devices updated to
+  `-H "X-Jarvis-Token: ..."` / `-H "Authorization: Bearer ..."`.
 
-## Segunda vuelta (2026-09-03, misma sesión) — CORS, ticket de /events, auditoría
+## Second pass (2026-09-03, same session) — CORS, /events ticket, audit
 
-- **CORS:** `bridge/server.py` y `agents/device_agent.py` mandaban
-  `Access-Control-Allow-Origin: *` en todo. Ahora `bridge/server.py` solo refleja
-  el `Origin` si está en `JARVIS_ALLOWED_ORIGINS` (o, sin configurar, si termina en
-  `.ts.net`); `device_agent.py` directamente dejó de mandar cabeceras CORS —
-  nada del repo lo llama desde JS de navegador, solo `curl`/Bash.
-- **`/events`:** ya no acepta el token real por `?token=`. `hud/index.html` primero
-  pide un ticket de un solo uso vía `GET /events/ticket` (autenticado con el
-  header de siempre) y recién con eso abre el `EventSource`. El ticket expira en
-  30s o al primer uso — si se filtra a un log, ya no sirve para nada.
-- **Auditoría en `device_agent`:** cada `action: "shell"` queda registrado (IP de
-  origen + comando) en `agents/shell-audit.log` (gitignored) y por stderr. No
-  evita el abuso, pero lo hace visible.
+- **CORS:** `bridge/server.py` and `agents/device_agent.py` sent
+  `Access-Control-Allow-Origin: *` on everything. Now `bridge/server.py` only reflects the
+  `Origin` if it's in `JARVIS_ALLOWED_ORIGINS` (or, unset, if it ends in `.ts.net`);
+  `device_agent.py` stopped sending CORS headers entirely — nothing in the repo calls it from
+  browser JS, only `curl`/Bash.
+- **`/events`:** no longer accepts the real token via `?token=`. `hud/index.html` first
+  requests a one-shot ticket via `GET /events/ticket` (authenticated with the usual header)
+  and only then opens the `EventSource`. The ticket expires in 30s or on first use — if it
+  leaks into a log, it's already worthless.
+- **Audit in `device_agent`:** every `action: "shell"` is logged (source IP + command) to
+  `agents/shell-audit.log` (gitignored) and to stderr. It doesn't prevent abuse, but it makes
+  it visible.
 
-## Riesgo residual (sin tocar)
+## Residual risk (untouched)
 
-- `agents/device_agent.py` sigue siendo shell remoto arbitrario por diseño —
-  aceptado y documentado en [[device-agent]]. Alternativas evaluadas y no
-  aplicadas: quitar `shell` y dejar solo acciones con nombre, aprobación humana
-  antes de ejecutar, o (la más sólida) restringir por ACL de Tailscale qué
-  dispositivos pueden alcanzar el puerto 8793 — esto último requiere acceso a la
-  consola de admin de Tailscale, fuera del alcance de este repo.
-- Whisper/Kokoro (voicemode, no es código de este repo) escuchan en `0.0.0.0`
-  sin ningún token — confirmado en vivo en esta PC (Kokoro `:8880`). Alcanzable
-  no solo desde la tailnet sino desde cualquiera en la misma red WiFI/LAN.
-  Mitigación real: regla de firewall (Windows/macOS/Linux según el dispositivo)
-  que solo permita esos puertos desde el rango de Tailscale — no aplicado, es un
-  cambio de sistema en vivo que hay que decidir con cuidado, no algo para tocar
-  sin más.
-- Modelo de confianza de `bin/auto-update`: hacía `git reset --hard origin/main`
-  sin ninguna verificación cada 5 min — si se comprometía la cuenta de GitHub
-  `SergioCc13`, el código llegaba y se ejecutaba solo en ≤5 min. **Quitado
-  2026-09-06** (`bin/auto-update` borrado, cron/LaunchAgent fuera): las
-  actualizaciones son ahora manuales (`git pull` por dispositivo). Sigue
-  conviniendo 2FA en la cuenta de GitHub y protección de rama en `main`.
+- `agents/device_agent.py` is still arbitrary remote shell by design — accepted and documented
+  in [[device-agent]]. Alternatives evaluated and not applied: drop `shell` and keep only named
+  actions, human approval before running, or (the strongest) restrict via a Tailscale ACL which
+  devices can reach port 8793 — that last one needs access to the Tailscale admin console,
+  outside this repo's scope.
+- Whisper/Kokoro (voicemode, not this repo's code) listen on `0.0.0.0` with no token —
+  confirmed live on this PC (Kokoro `:8880`). Reachable not just from the tailnet but from
+  anyone on the same WiFi/LAN. Real mitigation: a firewall rule (Windows/macOS/Linux depending
+  on the device) that only allows those ports from the Tailscale range — not applied, it's a
+  live system change to decide carefully, not something to touch lightly.
+- `bin/auto-update`'s trust model: it ran `git reset --hard origin/main` with no verification
+  every 5 min — if the GitHub account `SergioCc13` were compromised, the code would land and run
+  on its own within ≤5 min. **Removed 2026-09-06** (`bin/auto-update` deleted, cron/LaunchAgent
+  gone): updates are now manual (`git pull` per device). 2FA on the GitHub account and branch
+  protection on `main` are still worth setting up.
 
-Ver [[bridge]] · [[device-agent]].
+See [[bridge]] · [[device-agent]].

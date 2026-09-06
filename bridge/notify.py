@@ -8,14 +8,14 @@ Supported channels (configure via env vars):
 
 Usage (from Python):
     from bridge.notify import dispatch
-    dispatch("Buenos días, Sergio. Tu agenda de hoy...")
+    dispatch("Buenos días, Sergio. Tu agenda de hoy...")   # message stays in the product's language
     dispatch("Informe", channels=["email"], subject="Jarvis: Mercado")
 
 Usage (from CLI):
-    python3 bridge/notify.py "Mensaje de prueba"
-    python3 bridge/notify.py --channels discord,telegram "Mensaje"
-    python3 bridge/notify.py --channels email --subject "Asunto" "Mensaje"
-    python3 bridge/notify.py --no-voice "Texto plano sin voz"
+    python3 bridge/notify.py "Test message"
+    python3 bridge/notify.py --channels discord,telegram "Message"
+    python3 bridge/notify.py --channels email --subject "Subject" "Message"
+    python3 bridge/notify.py --no-voice "Plain text, no voice"
 """
 import json
 import os
@@ -33,9 +33,9 @@ TTS_VOICE        = os.environ.get("JARVIS_TTS_VOICE", "af_sky")
 
 
 def _urlopen(req, timeout=15):
-    """urlopen con reintento verificado→sin-verificar (redes con MITM/cert corporativo).
+    """urlopen with a verified→unverified retry (networks with MITM/corporate certs).
 
-    Igual que hacen send_email() y agents/trading.py._fetch().
+    Same approach as send_email() and agents/trading.py._fetch().
     """
     import ssl
     last = None
@@ -47,7 +47,7 @@ def _urlopen(req, timeout=15):
         try:
             return urllib.request.urlopen(req, timeout=timeout, context=ctx)
         except urllib.error.HTTPError:
-            raise  # error de aplicación, no de TLS
+            raise  # application error, not TLS
         except urllib.error.URLError as e:
             reason = getattr(e, "reason", e)
             if "CERTIFICATE_VERIFY_FAILED" in str(reason) or reason.__class__.__name__ == "SSLError":

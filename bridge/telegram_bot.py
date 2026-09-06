@@ -64,10 +64,10 @@ def send_typing(chat_id):
 
 
 def send_text(chat_id, text):
-    # Markdown so **negrita**, _cursiva_ y `código` se rendericen de verdad
-    # en vez de mostrarse con los símbolos literales. Si el texto tiene algo
-    # que rompe el parser de Telegram (asterisco suelto, etc.), reintenta en
-    # texto plano en vez de perder el mensaje.
+    # Markdown so **bold**, _italic_ and `code` actually render instead of
+    # showing the literal symbols. If the text has something that breaks
+    # Telegram's parser (a stray asterisk, etc.), retry as plain text rather
+    # than lose the message.
     try:
         _tg_post("sendMessage", {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"})
     except urllib.error.HTTPError:
@@ -105,8 +105,8 @@ def _save_cfg(cfg):
         json.dump(cfg, f, indent=2)
 
 
-# Frases que `claude -p` emite por stdout cuando NO ha respondido (límite de
-# sesión/uso). Mismo criterio que agents/analistas.py.
+# Phrases `claude -p` prints to stdout when it did NOT answer (session/usage
+# limit). Same criterion as agents/analistas.py.
 _LIMIT_MARKERS = ("session limit", "usage limit", "hit your limit", "quota",
                   "rate limit", "resets ", "please try again later")
 
@@ -118,10 +118,10 @@ def _ollama_reply(message, why):
     try:
         reply, model, ip = ollama_fallback.ask(message)
     except Exception as e:
-        print(f"[tg] Ollama también falló: {e}")
+        print(f"[tg] Ollama also failed: {e}")
         return None
     where = "Pi" if ip in ("127.0.0.1", "localhost") else ip
-    print(f"[tg] Claude no disponible ({why}) → Ollama {model} @ {ip}")
+    print(f"[tg] Claude unavailable ({why}) → Ollama {model} @ {ip}")
     return f"⚠️ Claude no disponible. Uso Ollama ({model}) en {where}.\n\n{reply}"
 
 

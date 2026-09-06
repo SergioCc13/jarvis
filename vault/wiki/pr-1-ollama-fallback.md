@@ -1,20 +1,20 @@
 ---
 title: "PR #1 — fix ollama-fallback"
 tags: [pr, llm]
-status: abierto
+status: open
 updated: 2026-09-01
-summary: El fallback a Ollama de server.py anunciaba el cambio pero nunca respondía.
+summary: server.py's Ollama fallback announced the switch but never actually replied.
 ---
 
 # PR #1 — `fix/ollama-fallback`
 
-**Problema:** con `claude` sin tokens, el HUD mostraba "Usando Ollama" pero no llegaba respuesta.
+**Problem:** with `claude` out of tokens, the HUD showed "Using Ollama" but no reply ever arrived.
 
-**Causa:** `_pick_ollama()` solo hacía `socket.connect` al 11434 (no comprobaba el modelo);
-`_ask_ollama` sin `try/except` y sin reintento al siguiente backend; timeout de 120 s corto
-para cargar un 7B en frío.
+**Cause:** `_pick_ollama()` only did a `socket.connect` to 11434 (it never checked the model);
+`_ask_ollama` had no `try/except` and no retry against the next backend; the 120 s timeout was
+too short to load a 7B model cold.
 
-**Fix:** elige un modelo que exista (`/api/tags`), recorre todos los backends, timeout
-configurable + `keep_alive`, y si fallan todos lanza un error que nombra cada causa.
+**Fix:** pick a model that actually exists (`/api/tags`), iterate over every backend, configurable
+timeout + `keep_alive`, and if all of them fail raise an error that names each cause.
 
-Ver [[ollama-fallback]] · [[bridge]].
+See [[ollama-fallback]] · [[bridge]].

@@ -1,19 +1,19 @@
 ---
-title: "PR #4 — bugs varios"
+title: "PR #4 — assorted bugs"
 tags: [pr, ops]
-status: abierto
+status: open
 updated: 2026-09-01
-summary: Recordatorios duplicados, Telegram >4096, watchdog frágil, timeouts sin capturar.
+summary: Duplicate reminders, Telegram >4096, fragile watchdog, uncaught timeouts.
 ---
 
 # PR #4 — `fix/bugs-recordatorios-telegram-watchdog`
 
-De una revisión de `bin/` + `bridge/` + `agents/`:
+From a review of `bin/` + `bridge/` + `agents/`:
 
-1. `bin/check-reminders` repetía cada recordatorio cada 30 min → `bridge/reminders_state.json`.
-2. `notify.send_telegram` fallaba mudo con >4096 chars → trocea a ≤4000 + error real.
-3. `watchdog.check_bridge` daba falso "caído" con 4xx → solo 5xx/timeout.
-4. `TimeoutExpired` de `notify.py` abortaba watchdog/reminders antes de `save_state` → capturado.
-5. `seguimiento.llm_digest` petaba con `price` None.
+1. `bin/check-reminders` repeated every reminder every 30 min → `bridge/reminders_state.json`.
+2. `notify.send_telegram` failed silently at >4096 chars → splits into ≤4000 + a real error.
+3. `watchdog.check_bridge` reported a false "down" on 4xx → only 5xx/timeout now.
+4. A `TimeoutExpired` from `notify.py` aborted watchdog/reminders before `save_state` → now caught.
+5. `seguimiento.llm_digest` crashed with `price` None.
 
-Ver [[watchdog]] · [[notificaciones]] · [[seguimiento]].
+See [[watchdog]] · [[notificaciones]] · [[seguimiento]].

@@ -118,15 +118,15 @@ def ask(text, keep_history=True):
             continue
         reply = (data.get("message") or {}).get("content", "").strip()
         if not reply:
-            tried.append(f"{ip} ({model}): respuesta vacía")
+            tried.append(f"{ip} ({model}): empty response")
             continue
         if keep_history:
             _history.append({"role": "user", "content": text})
             _history.append({"role": "assistant", "content": reply})
         return reply, model, ip
 
-    raise RuntimeError("ningún backend Ollama respondió — "
-                       + " | ".join(tried or ["JARVIS_OLLAMA_BACKENDS vacío"]))
+    raise RuntimeError("no Ollama backend responded — "
+                       + " | ".join(tried or ["JARVIS_OLLAMA_BACKENDS empty"]))
 
 
 if __name__ == "__main__":  # quick manual test: python3 bridge/ollama_fallback.py "hola"

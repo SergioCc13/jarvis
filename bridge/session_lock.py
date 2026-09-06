@@ -44,8 +44,8 @@ def claude_session_lock(timeout=180, poll=0.5):
             except OSError:
                 if time.time() >= deadline:
                     raise TimeoutError(
-                        "otra petición está usando la sesión de Claude "
-                        f"(esperé {timeout}s)"
+                        "another request is using the Claude session "
+                        f"(waited {timeout}s)"
                     )
                 time.sleep(poll)
         try:

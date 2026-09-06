@@ -1,49 +1,48 @@
 ---
-title: Fallback a Ollama
-tags: [subsistema, llm]
-status: activo
+title: Ollama fallback
+tags: [subsystem, llm]
+status: active
 updated: 2026-09-02
-summary: Cadena escalonada cuando claude falla — nube gratis, luego Ollama remoto grande, luego local pequeño; modelo por dispositivo.
+summary: Tiered chain when claude fails — free cloud, then large remote Ollama, then small local; per-device model.
 ---
 
-# Fallback a Ollama
+# Ollama fallback
 
-Cuando `claude` no está disponible (límite de sesión/uso, timeout, crash), Jarvis responde
-por una **cadena escalonada**:
+When `claude` is unavailable (session/usage limit, timeout, crash), Jarvis replies via a
+**tiered chain**:
 
 ```
-Claude  →  nube gratis (Groq/Gemini/OpenRouter)  →  Ollama remoto (modelo grande)  →  Ollama local (pequeño)
+Claude  →  free cloud (Groq/Gemini/OpenRouter)  →  remote Ollama (large model)  →  local Ollama (small)
 ```
 
-Config en `bridge/.env`:
+Config in `bridge/.env`:
 
-- `JARVIS_CLOUD_URL` / `_KEY` / `_MODEL` — endpoint OpenAI-compatible. Blanco = saltar la nube.
-- `JARVIS_OLLAMA_BACKENDS` — backends `:11434` en orden. Cada entrada es `IP` o `IP=modelo`,
-  así una máquina de 32 GB corre `qwen2.5-coder:32b` y la Pi de 8 GB `qwen2.5:3b` con la
-  misma variable. Las IP sin `=modelo` usan `JARVIS_OLLAMA_MODEL` (o `_MODEL_LOCAL` para
-  `127.0.0.1`). `127.0.0.1` al final = último recurso.
-- `JARVIS_OLLAMA_TIMEOUT` (300 s, carga en frío de un 7B), `_KEEP_ALIVE` (30m).
+- `JARVIS_CLOUD_URL` / `_KEY` / `_MODEL` — an OpenAI-compatible endpoint. Blank = skip the cloud.
+- `JARVIS_OLLAMA_BACKENDS` — `:11434` backends in order. Each entry is `IP` or `IP=model`, so a
+  32 GB machine runs `qwen2.5-coder:32b` and the 8 GB Pi runs `qwen2.5:3b` from the same
+  variable. IPs without `=model` use `JARVIS_OLLAMA_MODEL` (or `_MODEL_LOCAL` for `127.0.0.1`).
+  `127.0.0.1` last = last resort.
+- `JARVIS_OLLAMA_TIMEOUT` (300 s, cold-loading a 7B), `_KEEP_ALIVE` (30m).
 
-La nube es el salto que más calidad recupera cuando se acaban los tokens de Claude pero hay
-internet; los Ollama son el seguro para cortes de red. Ver [[coste-tokens]].
+The cloud is the hop that recovers the most quality when Claude's tokens run out but there's
+internet; the Ollamas are the insurance for network outages. See [[coste-tokens]].
 
-## Dos implementaciones
+## Two implementations
 
-- **`bridge/server.py`** (HUD/voz) — `ask()` prueba Claude → `_cloud_fallback` → `_ollama_fallback`.
-  Anuncia el cambio de tier por Telegram/HUD (`_notify_async` + `_push_event`) y avisa cuando
-  Claude vuelve. [[pr-1-ollama-fallback]] arregló el Ollama; [[pr-9-fallback-nube]] añade la
-  nube y el modelo por dispositivo.
-- **`bridge/ollama_fallback.py`** (módulo compartido, [[pr-5-telegram-ollama-jobs]]) — lo usa
-  [[telegram]]. Recorre **todos** los backends con el mismo formato `IP=modelo`, comprueba con
-  `/api/tags` que el modelo exista (hint → tag configurado → misma familia → cualquiera). No
-  tiene tier de nube todavía.
+- **`bridge/server.py`** (HUD/voice) — `ask()` tries Claude → `_cloud_fallback` → `_ollama_fallback`.
+  Announces the tier switch via Telegram/HUD (`_notify_async` + `_push_event`) and reports when
+  Claude comes back. [[pr-1-ollama-fallback]] fixed the Ollama path; [[pr-9-fallback-nube]] adds
+  the cloud and the per-device model.
+- **`bridge/ollama_fallback.py`** (shared module, [[pr-5-telegram-ollama-jobs]]) — used by
+  [[telegram]]. Iterates over **every** backend in the same `IP=model` format, checks via
+  `/api/tags` that the model exists (hint → configured tag → same family → any). No cloud tier yet.
 
-## Pendiente ([[ideas-pendientes]])
+## Pending ([[ideas-pendientes]])
 
-- Unificar: que `server.py` use también `ollama_fallback.py` (y llevar ahí el tier de nube).
-- Router capability-aware real (que el hub elija el tier más alto *alcanzable* por dispositivo
-  en vez de una lista fija).
+- Unify: have `server.py` also use `ollama_fallback.py` (and move the cloud tier there).
+- A real capability-aware router (the hub picks the highest tier *reachable* per device instead
+  of a fixed list).
 
-## Relacionado
+## Related
 
 [[bridge]] · [[telegram]] · [[coste-tokens]] · [[pr-1-ollama-fallback]] · [[pr-5-telegram-ollama-jobs]] · [[pr-9-fallback-nube]]

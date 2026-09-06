@@ -1,38 +1,38 @@
 ---
-title: Análisis de mercado
-tags: [subsistema, mercado]
-status: activo
+title: Market analysis
+tags: [subsystem, mercado]
+status: active
 updated: 2026-09-01
-summary: bin/analiza — informe completo multi-agente los lunes, rápido (1 llamada) a diario.
+summary: bin/analiza — full multi-agent report on Mondays, quick (1 call) daily.
 ---
 
-# Análisis de mercado — `bin/analiza`
+# Market analysis — `bin/analiza`
 
-Genera el email **"Jarvis: Mercado"** (+ Telegram). Datos de `agents/trading.py` (Yahoo /
-CoinGecko, stdlib, sin pip); indicadores de [[seguimiento]] (`build_snapshot`).
+Generates the **"Jarvis: Mercado"** email (+ Telegram). Data from `agents/trading.py` (Yahoo /
+CoinGecko, stdlib, no pip); indicators from [[seguimiento]] (`build_snapshot`).
 
-## Dos modos ([[pr-2-mercado-cadencia]])
+## Two modes ([[pr-2-mercado-cadencia]])
 
-| Cuándo | Comando | Coste |
+| When | Command | Cost |
 |---|---|---|
-| **Lunes** | `bin/analiza` | multi-agente, ~127 llamadas `claude -p`, ~20-40 min |
-| **Resto** | `bin/analiza --rapido` | **1 llamada**, resumen de 180 palabras |
+| **Monday** | `bin/analiza` | multi-agent, ~127 `claude -p` calls, ~20-40 min |
+| **Rest** | `bin/analiza --rapido` | **1 call**, 180-word summary |
 
-## Motor multi-agente — `agents/analistas.py`
+## Multi-agent engine — `agents/analistas.py`
 
-Por activo, cadena de 6 roles (técnico → contexto → alcista → bajista → trader → riesgo),
-cada rol re-manda el trabajo previo en el prompt (de ahí el coste). Bloque final por activo:
-Puntuación 0-100, Recomendación, Plazo, entrada/salida, próximo evento, justificación. Luego
-un rol de cartera escribe la "Visión de cartera". `--patch` reintenta solo los activos fallidos.
+Per asset, a chain of 6 roles (technical → context → bull → bear → trader → risk), each role
+re-feeding the previous work in the prompt (hence the cost). Final block per asset:
+Score 0-100, Recommendation, Horizon, entry/exit, next event, rationale. Then a portfolio
+role writes the "Visión de cartera". `--patch` retries only the failed assets.
 
-## Fechas y gráfico (antes sin usar, cableado en [[pr-2-mercado-cadencia]])
+## Dates and chart (previously unused, wired in [[pr-2-mercado-cadencia]])
 
-- `agents/calendar_data.py`: **fecha real** de la próxima Fed (FOMC 2026 oficial) +
-  resultados/dividendos de Yahoo. La línea "Próximo evento relevante" se **sobrescribe**
-  con esto; el LLM ya no la inventa.
-- `agents/charts.py --scores`: gráfico de barras 0-100 adjunto al email (0 tokens; necesita
+- `agents/calendar_data.py`: the **real date** of the next Fed meeting (official 2026 FOMC) +
+  Yahoo earnings/dividends. The "Próximo evento relevante" line is **overwritten** with this;
+  the LLM no longer invents it.
+- `agents/charts.py --scores`: a 0-100 bar chart attached to the email (0 tokens; needs
   `python3-matplotlib`).
 
-## Relacionado
+## Related
 
 [[seguimiento]] · [[coste-tokens]] · [[cron]] · [[pr-2-mercado-cadencia]]

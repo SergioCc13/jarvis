@@ -1,34 +1,34 @@
 ---
-title: Orbe de cristal
-tags: [subsistema, frontend]
-status: activo
+title: Glass orb
+tags: [subsystem, frontend]
+status: active
 updated: 2026-09-01
-summary: La bola del HUD — canvas con ruido; estados idle/listening/thinking/speaking.
+summary: The HUD's ball — a noise canvas; idle/listening/thinking/speaking states.
 ---
 
-# Orbe de cristal — `hud/index.html` (`initCore`)
+# Glass orb — `hud/index.html` (`initCore`)
 
-Blob orgánico dibujado en `<canvas>` con ruido Perlin; `requestAnimationFrame` continuo.
-`CORE_STATES` define amplitud, velocidad de superficie, respiración y glow por estado.
+An organic blob drawn on a `<canvas>` with Perlin noise; continuous `requestAnimationFrame`.
+`CORE_STATES` defines amplitude, surface speed, breathing and glow per state.
 
-## Estados
+## States
 
-| Estado | Sensación |
+| State | Feel |
 |---|---|
-| `idle` | calma, deriva lenta |
-| `listening` | reactivo, glow alto |
-| `thinking` | superficie hirviendo rápido, pulso de tamaño, bultos girando (**nuevo**) |
-| `speaking` | ondas en el borde + parpadeo de brillo, atado a la reproducción de audio |
+| `idle` | calm, slow drift |
+| `listening` | reactive, high glow |
+| `thinking` | fast-boiling surface, size pulse, orbiting blobs (**new**) |
+| `speaking` | edge ripples + brightness flicker, tied to audio playback |
 
-## El bug que arregla [[pr-3-orbe-vivo]]
+## The bug [[pr-3-orbe-vivo]] fixes
 
-El orbe **solo** lo movía `renderAudio()` (lee logs de voicemode). El chat de texto y el
-micro del HUD nunca lo tocaban, y `renderAudio` lo forzaba a `idle` cada 1,5 s. Resultado:
-congelado en reposo casi siempre.
+The orb was moved **only** by `renderAudio()` (which reads voicemode logs). The text chat and
+the HUD mic never touched it, and `renderAudio` forced it back to `idle` every 1.5 s. Result:
+frozen at rest almost all the time.
 
-Arreglo: estado `thinking` nuevo + `hudCore(state)` — mientras el chat/voz del HUD está
-activo, es dueño del orbe y `renderAudio` cede. `_setChatState` y `_sendVoice` lo conducen.
+Fix: a new `thinking` state + `hudCore(state)` — while the HUD chat/voice is active it owns the
+orb and `renderAudio` yields. `_setChatState` and `_sendVoice` drive it.
 
-## Relacionado
+## Related
 
 [[hud]] · [[pr-3-orbe-vivo]]

@@ -1,24 +1,24 @@
 ---
 title: vault-refresh
-tags: [subsistema, ops]
-status: activo
+tags: [subsystem, ops]
+status: active
 updated: 2026-09-01
-summary: bin/vault-refresh regenera vault/outputs/*.md con skills de voz antes del brief.
+summary: bin/vault-refresh regenerates vault/outputs/*.md with the voice skills before the brief.
 ---
 
 # vault-refresh — `bin/vault-refresh`
 
-Antes del `morning-brief`, corre los skills de voz de Jarvis (`plan`, `habitos`,
-`recordatorios`, `inbox`) para dejar `vault/outputs/*.md` frescos, que es lo que enseña
-el [[hud]].
+Before `morning-brief`, it runs Jarvis's voice skills (`plan`, `habitos`,
+`recordatorios`, `inbox`) to keep `vault/outputs/*.md` fresh, which is what the
+[[hud]] shows.
 
-Cada skill es una llamada `claude -p`.
+Each skill is one `claude -p` call.
 
-## Arreglo de [[pr-6-hardening]]
+## Fix from [[pr-6-hardening]]
 
-**Omite** el skill cuyo `vault/outputs/<skill>.md` ya sea de hoy → 0-4 llamadas menos si el
-cron se repite. `--force` regenera todo. (`date -r` funciona en macOS y GNU.)
+**Skips** the skill whose `vault/outputs/<skill>.md` is already from today → 0-4 fewer calls if
+the cron runs again. `--force` regenerates everything. (`date -r` works on both macOS and GNU.)
 
-## Relacionado
+## Related
 
 [[cron]] · [[coste-tokens]] · [[wiki-como-funciona]]

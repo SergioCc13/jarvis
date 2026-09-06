@@ -1,29 +1,28 @@
 ---
-title: Coste de tokens
+title: Token cost
 tags: [decision, llm]
-status: vivo
+status: living
 updated: 2026-09-01
-summary: Prioridad del proyecto — minimizar consumo de cuota; preferir stdlib a llamadas LLM.
+summary: Project priority — minimize quota usage; prefer stdlib over LLM calls.
 ---
 
-# Coste de tokens
+# Token cost
 
-Preocupación recurrente de Sergio: **vigilar el consumo de cuota** y preferir siempre la
-vía barata.
+Sergio's recurring concern: **watch quota usage** and always prefer the cheap path.
 
-## Dónde se va
+## Where it goes
 
-| Sitio | Antes | Ahora |
+| Place | Before | Now |
 |---|---|---|
-| [[mercado]] multi-agente | ~127 `claude -p` **cada día** | solo lunes; `--rapido` = 1 llamada ([[pr-2-mercado-cadencia]]) |
-| [[vault-refresh]] | 4 `claude -p` cada mañana | omite los ya frescos ([[pr-6-hardening]]) |
-| [[seguimiento]] | — | ya llama al LLM solo si hay señal |
-| Sin tokens | error mudo | cae a [[ollama-fallback]] |
+| [[mercado]] multi-agent | ~127 `claude -p` **every day** | Mondays only; `--rapido` = 1 call ([[pr-2-mercado-cadencia]]) |
+| [[vault-refresh]] | 4 `claude -p` every morning | skips the ones already fresh ([[pr-6-hardening]]) |
+| [[seguimiento]] | — | already calls the LLM only when there's a signal |
+| Out of tokens | silent error | falls back to [[ollama-fallback]] |
 
-## Regla al extender Jarvis
+## Rule when extending Jarvis
 
-Preferir helpers deterministas de stdlib a llamadas al LLM. Mantener el multi-agente
-**opt-in**. Cada `claude -p` arranca con ~15k tokens de contexto de Claude Code antes del
-prompt, así que lo caro es el **número de invocaciones**, no el prompt.
+Prefer deterministic stdlib helpers over LLM calls. Keep the multi-agent path **opt-in**.
+Each `claude -p` starts with ~15k tokens of Claude Code context before the prompt, so the
+expensive part is the **number of invocations**, not the prompt.
 
-Ver [[mercado]] · [[ollama-fallback]] · [[vault-refresh]].
+See [[mercado]] · [[ollama-fallback]] · [[vault-refresh]].

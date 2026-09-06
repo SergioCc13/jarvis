@@ -1,21 +1,21 @@
 ---
-title: "PR #2 — mercado: semanal + diario"
+title: "PR #2 — market: weekly + daily"
 tags: [pr, mercado]
-status: abierto
+status: open
 updated: 2026-09-01
-summary: Multi-agente solo los lunes, rápido a diario; + fechas reales y gráfico de puntuaciones.
+summary: Multi-agent on Mondays only, quick daily; + real dates and a scores chart.
 ---
 
 # PR #2 — `feat/mercado-semanal-completo-diario-rapido`
 
-- **Cadencia:** `bin/analiza` completo los **lunes**, `--rapido` (1 llamada) el resto.
-  Cron en `bin/install-pi`.
-- **Fechas reales:** cablea `agents/calendar_data.py` (FOMC oficial + resultados Yahoo) y
-  **sobrescribe** la línea "Próximo evento relevante" del bloque final. El `--rapido` también
-  recibe la fecha de la Fed.
-- **Gráfico:** `agents/charts.py --scores` adjunto al email. `bridge/notify.send_email` y
-  `dispatch` aceptan `attachments`; `bin/install-pi` instala `python3-matplotlib`.
+- **Cadence:** `bin/analiza` full on **Mondays**, `--rapido` (1 call) the rest of the week.
+  Cron in `bin/install-pi`.
+- **Real dates:** wires in `agents/calendar_data.py` (official FOMC + Yahoo earnings) and
+  **overwrites** the "Próximo evento relevante" line in the final block. `--rapido` also
+  gets the Fed date.
+- **Chart:** `agents/charts.py --scores` attached to the email. `bridge/notify.send_email` and
+  `dispatch` accept `attachments`; `bin/install-pi` installs `python3-matplotlib`.
 
-Toca las líneas del cron de `bin/install-pi` → mergear antes de tocar [[cron]].
+Touches the cron lines in `bin/install-pi` → merge before touching [[cron]].
 
-Ver [[mercado]] · [[seguimiento]] · [[coste-tokens]].
+See [[mercado]] · [[seguimiento]] · [[coste-tokens]].

@@ -61,7 +61,7 @@ def notify(message, env):
     except (subprocess.TimeoutExpired, OSError) as e:
         # a slow notify.py must not abort main() before save_state() runs,
         # or the next run re-alerts for everything
-        print(f"[watchdog] notify.py falló: {e}")
+        print(f"[watchdog] notify.py failed: {e}")
 
 
 def check_bridge():

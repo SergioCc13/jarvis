@@ -1,31 +1,31 @@
 ---
-title: Watchdog y recordatorios
-tags: [subsistema, ops]
-status: activo
+title: Watchdog and reminders
+tags: [subsystem, ops]
+status: active
 updated: 2026-09-01
-summary: bin/watchdog vigila servicios; bin/check-reminders avisa de recordatorios próximos.
+summary: bin/watchdog watches services; bin/check-reminders warns about upcoming reminders.
 ---
 
-# Watchdog y recordatorios
+# Watchdog and reminders
 
-## `bin/watchdog` (cada 5 min)
+## `bin/watchdog` (every 5 min)
 
-Comprueba bridge (:8792), proceso del bot de Telegram, y dispositivos (`last_seen` en
-`devices.json`, offline >5 min). Alerta por [[notificaciones]] solo en el **cambio** de
-estado (guarda `bridge/watchdog_state.json`).
+Checks the bridge (:8792), the Telegram bot process, and devices (`last_seen` in
+`devices.json`, offline >5 min). Alerts via [[notificaciones]] only on a state **change**
+(stores `bridge/watchdog_state.json`).
 
-## `bin/check-reminders` (cada 30 min)
+## `bin/check-reminders` (every 30 min)
 
-Lee `vault/outputs/recordatorios.md`, avisa de los de hoy con hora dentro de la ventana
-(−5 a +30 min).
+Reads `vault/outputs/recordatorios.md`, warns about today's reminders whose time falls in
+the window (−5 to +30 min).
 
-## Arreglos de [[pr-4-bugs-varios]]
+## Fixes from [[pr-4-bugs-varios]]
 
-- `check-reminders` no guardaba estado → repetía cada recordatorio 2-3 veces. Ahora
-  `bridge/reminders_state.json` (una notificación por recordatorio).
-- `watchdog.check_bridge` contaba cualquier 4xx como "caído" → ahora solo 5xx/timeout.
-- `TimeoutExpired` de `notify.py` abortaba la corrida antes de guardar estado → capturado.
+- `check-reminders` didn't persist state → repeated every reminder 2-3 times. Now
+  `bridge/reminders_state.json` (one notification per reminder).
+- `watchdog.check_bridge` counted any 4xx as "down" → now only 5xx/timeout.
+- A `TimeoutExpired` from `notify.py` aborted the run before saving state → now caught.
 
-## Relacionado
+## Related
 
 [[cron]] · [[notificaciones]] · [[pr-4-bugs-varios]]

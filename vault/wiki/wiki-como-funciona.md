@@ -1,47 +1,47 @@
 ---
-title: Cómo funciona este wiki
+title: How this wiki works
 tags: [meta]
-status: vivo
+status: living
 updated: 2026-09-01
-summary: Convenciones del wiki y qué hace bin/wiki-graph (grafo + índice + chequeos).
+summary: Wiki conventions and what bin/wiki-graph does (graph + index + checks).
 ---
 
-# Cómo funciona este wiki
+# How this wiki works
 
-## Convenciones
+## Conventions
 
-- Una nota por concepto, en `vault/wiki/` (a cualquier profundidad).
-- Nombre de fichero en `kebab-case`; ese es el **id** del nodo y el destino de `[[enlaces]]`.
+- One note per concept, in `vault/wiki/` (at any depth).
+- Filename in `kebab-case`; that's the node **id** and the target of `[[links]]`.
 - Frontmatter:
-  - `title` — título legible.
-  - `tags` — lista; **el primero** es el grupo en el índice (`subsistema`, `pr`, `idea`, `meta`, `decision`).
-  - `status` — `activo`, `abierto`, `mergeado`, `idea`, `vivo`…
+  - `title` — human-readable title.
+  - `tags` — a list; **the first one** is the group in the index (`subsystem`, `pr`, `idea`, `meta`, `decision`).
+  - `status` — `active`, `open`, `merged`, `idea`, `living`…
   - `updated` — `YYYY-MM-DD`.
-  - `summary` — una frase; es lo que sale en el índice y en `_graph`.
-- Enlaza de más: `[[bridge]]`, `[[ollama-fallback]]`. Un enlace a una nota que aún no existe
-  es una tarea pendiente, no un error (lo reporta el generador).
+  - `summary` — one sentence; this is what shows in the index and in `_graph`.
+- Over-link: `[[bridge]]`, `[[ollama-fallback]]`. A link to a note that doesn't exist yet is a
+  to-do, not an error (the generator reports it).
 
 ## `bin/wiki-graph`
 
 ```
-bin/wiki-graph           # regenera _graph.json, _graph.md y el índice de MOC.md
-bin/wiki-graph --check   # exit 1 si algo está desactualizado o hay enlaces rotos
+bin/wiki-graph           # regenerate _graph.json, _graph.md and the MOC.md index
+bin/wiki-graph --check   # exit 1 if something is stale or there are broken links
 ```
 
-Escanea todas las notas (menos `private/` y `_*`), extrae frontmatter + `[[enlaces]]`
-(ignora los que están dentro de bloques de código) y escribe:
+It scans every note (except `private/` and `_*`), extracts frontmatter + `[[links]]`
+(ignoring the ones inside code blocks) and writes:
 
 - **`_graph.json`** — `{nodes:[{id,title,summary,tags,status,file,links}], edges:[[a,b]]}`.
-  Una sola lectura da el mapa entero. Ideal para Claude o scripts.
-- **`_graph.md`** — lo mismo agrupado por tag, + secciones de **enlaces rotos** y **huérfanas**.
-- El bloque `<!-- AUTO:INDEX -->` de [[MOC]].
+  One read gives the whole map. Ideal for Claude or scripts.
+- **`_graph.md`** — the same, grouped by tag, + **broken links** and **orphans** sections.
+- The `<!-- AUTO:INDEX -->` block of [[MOC]].
 
-(`_graph.*` empiezan por `_` → el generador no los trata como notas.)
-Idempotente: correrlo dos veces no cambia nada. Se puede colgar de un pre-commit o del cron.
+(`_graph.*` start with `_` → the generator doesn't treat them as notes.)
+Idempotent: running it twice changes nothing. Can hang off a pre-commit or the cron.
 
-## Escalar
+## Scaling
 
-Añadir tema = crear un `.md` con frontmatter y `bin/wiki-graph`. Nada en el generador
-enumera notas a mano; el grafo se reconstruye entero cada vez.
+Adding a topic = create a `.md` with frontmatter and run `bin/wiki-graph`. Nothing in the
+generator lists notes by hand; the graph is rebuilt whole every time.
 
-Ver también: [[cron]], [[coste-tokens]].
+See also: [[cron]], [[coste-tokens]].

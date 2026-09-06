@@ -24,6 +24,8 @@ When the user says or types "jarvis on", start a voice conversation session: gre
 
 Defaults to Spanish (`VOICEMODE_WHISPER_LANGUAGE=es` in `~/.voicemode/voicemode.env`, Spanish greeting/UI text). To run it in another language, change that env var and the greeting text mentioned above, and re-point `JARVIS_TTS_VOICE` (see `bridge/server.py`) at a Kokoro voice for your language.
 
+The product speaks Spanish to the user; this repo's code comments, docstrings and docs are in English. Spanish strings that are user-facing (greetings, Telegram/email copy) or that Jarvis must recognize as spoken input (the trigger phrases quoted below) are deliberately kept in Spanish.
+
 ## Multi-device control
 
 Jarvis can control any registered device (Mac, PC, etc.) over Tailscale. Each device runs `agents/device_agent.py` which exposes a local HTTP server (default port 8793). On startup each agent registers itself with this Pi hub via `POST /register` — the hub stores the registry in `bridge/devices.json`.
@@ -128,180 +130,181 @@ On Mac, `agents/com.jarvis.device-agent.plist` + `agents/start-agent.sh` are
 ready to use — see the install steps in the comment at the top of the plist.
 `KeepAlive` also relaunches it if it crashes, not just on boot.
 
-## Modo multi-agente
+## Multi-agent mode
 
-**Trigger**: el usuario dice o escribe `agentes:` seguido de la tarea.
+**Trigger**: the user says or types `agentes:` followed by the task.
 
-Ejemplos:
+Examples (spoken in Spanish):
 - *"agentes: busca el precio de Ragavan y dime si es buen momento para vender"*
 - *"agentes: revisa mi stock de Cardmarket y baja un 10% todo lo que lleve más de 30 días sin venderse"*
 - *"agentes: investiga las cartas más vendidas de Lorcana esta semana"*
 
-**Cómo responder**: descompón la tarea en subtareas y lanza agentes especializados en paralelo usando el `Agent` tool de Claude Code. Roles estándar:
+**How to respond**: break the task into subtasks and launch specialized agents in parallel with Claude Code's `Agent` tool. Standard roles:
 
-| Rol | Qué hace |
+| Role | What it does |
 |---|---|
-| **Investigador** | Busca información — usa `python3 agents/cardmarket.py`, `python3 bin/search`, `curl` |
-| **Analista** | Evalúa los datos del investigador y saca conclusiones |
-| **Ejecutor** | Toma acciones concretas — modifica precios, envía notificaciones |
-| **Crítico** | Revisa el trabajo del resto y señala errores o mejoras |
+| **Researcher** (`Investigador`) | Finds information — uses `python3 agents/cardmarket.py`, `python3 bin/search`, `curl` |
+| **Analyst** (`Analista`) | Evaluates the researcher's data and draws conclusions |
+| **Executor** (`Ejecutor`) | Takes concrete actions — changes prices, sends notifications |
+| **Critic** (`Crítico`) | Reviews everyone else's work and flags errors or improvements |
 
-No todos los agentes son necesarios en cada tarea — usa solo los que la tarea requiera. El resultado final se envía siempre por Telegram (`python3 bridge/notify.py --no-voice "resultado"`).
+Not every agent is needed for every task — use only the ones the task requires. The final result is always sent via Telegram (`python3 bridge/notify.py --no-voice "result"`).
 
-**Flujo tipo para Cardmarket**:
-1. Investigador busca precios con `python3 agents/cardmarket.py`
-2. Analista compara con tendencias y decide acción
-3. Ejecutor aplica cambios si el usuario lo pidió (`set-price`)
-4. Resumen → Telegram
+**Typical Cardmarket flow**:
+1. Researcher looks up prices with `python3 agents/cardmarket.py`
+2. Analyst compares against trends and decides on an action
+3. Executor applies changes if the user asked for them (`set-price`)
+4. Summary → Telegram
 
-## Scraper de precios y webs
+## Price & web scraper
 
-`agents/scraper.py` obtiene precios de cartas y texto de cualquier URL. Stdlib puro, sin API keys.
+`agents/scraper.py` fetches card prices and text from any URL. Pure stdlib, no API keys.
 
-| Juego | Fuente | Incluye precio Cardmarket EUR |
+| Game | Source | Includes Cardmarket EUR price |
 |---|---|---|
-| Magic | Scryfall API (oficial) | ✅ sí |
+| Magic | Scryfall API (official) | ✅ yes |
 | YuGiOh | ygoprodeck.com API | TCGPlayer USD |
-| Pokémon | pokemontcg.io (fallback DDG) | TCGPlayer USD |
+| Pokémon | pokemontcg.io (DDG fallback) | TCGPlayer USD |
 
 ```bash
-# Cartas
+# Cards
 python3 agents/scraper.py magic "Ragavan Nimble Pilferer"
 python3 agents/scraper.py pokemon "Charizard"
 python3 agents/scraper.py yugioh "Dark Magician"
 
-# Personas
-python3 agents/scraper.py persona "Elon Musk"              # búsqueda multi-fuente
-python3 agents/scraper.py github "torvalds"                # perfil GitHub (API oficial, sin key)
-python3 agents/scraper.py twitter "elonmusk"               # perfil Twitter/X vía Nitter
+# People
+python3 agents/scraper.py persona "Elon Musk"              # multi-source search
+python3 agents/scraper.py github "torvalds"                # GitHub profile (official API, no key)
+python3 agents/scraper.py twitter "elonmusk"               # Twitter/X profile via Nitter
 
-# Búsqueda
-python3 agents/scraper.py google "consulta"                # Google vía SerpAPI (si hay key) o DDG
-python3 agents/scraper.py search "consulta"                # DuckDuckGo Instant Answer
-python3 agents/scraper.py url "https://cualquier-web.com"  # texto limpio de cualquier web
+# Search
+python3 agents/scraper.py google "query"                   # Google via SerpAPI (if a key is set) or DDG
+python3 agents/scraper.py search "query"                   # DuckDuckGo Instant Answer
+python3 agents/scraper.py url "https://any-site.com"       # clean text from any web page
 
-# Trabajo
-python3 agents/scraper.py jobs "desarrollador python"
-python3 agents/scraper.py jobs "diseñador UX" --lugar "Barcelona"
+# Jobs
+python3 agents/scraper.py jobs "python developer"
+python3 agents/scraper.py jobs "UX designer" --lugar "Barcelona"
 ```
 
-- `persona`: combina DDG + GitHub API + LinkedIn/Twitter vía DDG site-search + links directos
-- `github`: API oficial de GitHub, gratuita, sin key — devuelve bio, empresa, repos, seguidores
-- `twitter`: intenta leer perfil vía mirrors Nitter (sin login), fallback a links directos
-- `google`: usa SerpAPI si `SERPAPI_KEY` está en `agents/.env` (100 búsquedas/mes gratis), si no DDG
-- `jobs`: Indeed/Infojobs (scraping) + Remotive API (remoto, gratis) + links directos
+- `persona`: combines DDG + GitHub API + LinkedIn/Twitter via DDG site-search + direct links
+- `github`: official GitHub API, free, no key — returns bio, company, repos, followers
+- `twitter`: tries to read the profile via Nitter mirrors (no login), falls back to direct links
+- `google`: uses SerpAPI if `SERPAPI_KEY` is in `agents/.env` (100 searches/month free), otherwise DDG
+- `jobs`: Indeed/Infojobs (scraping) + Remotive API (remote, free) + direct links
 
-Usa este scraper siempre que el usuario pregunte por precios de cartas, pida info de una persona, de una web, o busque trabajo.
+Use this scraper whenever the user asks about card prices, wants info on a person or a web page, or is looking for a job.
 
-## Análisis de mercado
+## Market analysis
 
-`agents/trading.py` recoge datos de mercado en tiempo real (stdlib puro, sin pip).
-`bin/analiza` genera el email **"Jarvis: Mercado"** y lo envía por **email + Telegram**.
+`agents/trading.py` collects real-time market data (pure stdlib, no pip).
+`bin/analiza` generates the **"Jarvis: Mercado"** email and sends it via **email + Telegram**.
 
-**Cadencia**: informe **completo** (multi-agente) los **lunes**; informe **rápido**
-(`--rapido`, 1 sola llamada) el **resto de días**. Lo instala `bin/install-pi`.
+**Cadence**: **full** report (multi-agent) on **Mondays**; **quick** report
+(`--rapido`, a single call) the **rest of the week**. Installed by `bin/install-pi`.
 
-| Fuente | Cubre | Key necesaria |
+| Source | Covers | Key needed |
 |---|---|---|
-| Yahoo Finance | Acciones (sufijos .MC/.DE/.L), ETFs, índices (^GSPC, ^GDAXI, ^VIX…), materias primas (GC=F, CL=F), FX (DX-Y.NYB) | No |
-| CoinGecko | Cripto (BTC, ETH, SOL, XRP, ADA, DOGE…) | No |
-| agents/scraper.py | Cartas TCG (precio Cardmarket EUR) | No |
+| Yahoo Finance | Stocks (.MC/.DE/.L suffixes), ETFs, indices (^GSPC, ^GDAXI, ^VIX…), commodities (GC=F, CL=F), FX (DX-Y.NYB) | No |
+| CoinGecko | Crypto (BTC, ETH, SOL, XRP, ADA, DOGE…) | No |
+| agents/scraper.py | TCG cards (Cardmarket EUR price) | No |
 
-### Motor multi-agente (informe completo, lunes)
+### Multi-agent engine (full report, Mondays)
 
-`bin/analiza` sin flags ejecuta `agents/analistas.py`: por cada activo de
-`agents/watchlist.txt` corre una cadena de roles inspirada en
+`bin/analiza` with no flags runs `agents/analistas.py`: for each asset in
+`agents/watchlist.txt` it runs a role chain inspired by
 [TauricResearch/TradingAgents](https://github.com/TauricResearch/TradingAgents),
-cada rol una llamada a `claude -p` que ve el trabajo del anterior:
+each role a `claude -p` call that sees the previous role's work:
 
-1. **Analista técnico/cuantitativo** — tendencia, momentum, volumen, 52 semanas (solo hechos)
-2. **Analista de contexto y eventos** — catalizadores, próximo evento
-3. **Investigador alcista** — mejor tesis de compra
-4. **Investigador bajista** — rebate y construye el caso bajista
-5. **Trader** — sopesa el debate, decisión preliminar + rangos entrada/salida
-6. **Gestor de riesgo / cartera** — veredicto FINAL en el formato del email
+1. **Technical / quantitative analyst** — trend, momentum, volume, 52-week range (facts only)
+2. **Context & events analyst** — catalysts, next event
+3. **Bull researcher** — the strongest case to buy
+4. **Bear researcher** — rebuts it and builds the bearish case
+5. **Trader** — weighs the debate, preliminary decision + entry/exit ranges
+6. **Risk / portfolio manager** — FINAL verdict in the email's format
 
-Luego un rol de cartera escribe la **Visión de cartera** que encabeza el informe.
-Cada activo queda con un bloque: Puntuación 0-100, Recomendación
-(Compra fuerte/floja · Neutral · Venta floja/fuerte), Plazo, Precio objetivo de
-entrada y de salida, Próximo evento relevante, y Justificación.
+Then a portfolio role writes the **"Visión de cartera"** (portfolio view) that heads the report.
+Each asset gets a block: Score 0-100, Recommendation
+(strong/weak buy · Neutral · weak/strong sell), Horizon, target entry
+and exit price, "Próximo evento relevante" (next relevant event), and Rationale.
 
-Los indicadores (RSI, SMA 50/200, 52 s, volumen) los aporta `agents/seguimiento.py`.
-La línea **"Próximo evento relevante" NO la inventa el LLM**: sale de
-`agents/calendar_data.py` (calendario oficial de la Fed + fechas de
-resultados/dividendos de Yahoo Finance) y se fuerza en el bloque final. El email
-**adjunta el gráfico de puntuaciones** (`agents/charts.py --scores`, 0 tokens;
-necesita `python3-matplotlib`, que instala `bin/install-pi`).
+The indicators (RSI, SMA 50/200, 52w, volume) come from `agents/seguimiento.py`.
+The **"Próximo evento relevante" line is NOT invented by the LLM**: it comes from
+`agents/calendar_data.py` (official Fed calendar + earnings/dividend dates from
+Yahoo Finance) and is forced into the final block. The email
+**attaches the scores chart** (`agents/charts.py --scores`, 0 tokens;
+needs `python3-matplotlib`, installed by `bin/install-pi`).
 
-**Coste**: ~6 llamadas por activo + 1. Con la watchlist de 21 activos ≈ 127 llamadas
-y **~20-40 min** por ejecución. Por eso corre **solo los lunes**. No es asesoría
-financiera: es un scaffold de análisis.
+**Cost**: ~6 calls per asset + 1. With the 21-asset watchlist ≈ 127 calls
+and **~20-40 min** per run. That's why it runs **only on Mondays**. Not financial
+advice: it's an analysis scaffold.
 
 ```bash
-bin/analiza                       # watchlist completa, multi-agente → email + Telegram
-bin/analiza --only BTC ETH        # solo esos activos (para probar)
-bin/analiza --limit 3             # solo los 3 primeros
-bin/analiza --rapido [SÍMBOLOS]   # 1 llamada: resumen de 180 palabras (informe diario)
-python3 agents/trading.py AAPL BTC ^GSPC   # solo datos brutos, sin LLM
+bin/analiza                       # full watchlist, multi-agent → email + Telegram
+bin/analiza --only BTC ETH        # only those assets (for testing)
+bin/analiza --limit 3             # only the first 3
+bin/analiza --rapido [SYMBOLS]    # 1 call: 180-word summary (daily report)
+python3 agents/trading.py AAPL BTC ^GSPC   # raw data only, no LLM
 ```
 
-**Watchlist diaria** (`agents/watchlist.txt`): un símbolo por línea. Las líneas
-`nombre tcg juego` (cartas) las ignora el motor de mercado.
+**Daily watchlist** (`agents/watchlist.txt`): one symbol per line. Lines of the
+form `name tcg game` (cards) are ignored by the market engine.
 
-**Email**: necesita `JARVIS_EMAIL_PASSWORD` en `bridge/.env` (Gmail App Password).
-Cómo obtenerlo: myaccount.google.com → Seguridad → Verificación en 2 pasos → Contraseñas de app → crear "Jarvis".
+**Email**: needs `JARVIS_EMAIL_PASSWORD` in `bridge/.env` (Gmail App Password).
+How to get one: myaccount.google.com → Security → 2-Step Verification → App passwords → create "Jarvis".
 
-**Triggers de voz/Telegram** que debes reconocer:
-- *"analiza AAPL"*, *"cómo va BTC hoy"* → `bin/analiza --only SÍMBOLO`
+**Voice / Telegram triggers** to recognize (spoken in Spanish):
+- *"analiza AAPL"*, *"cómo va BTC hoy"* → `bin/analiza --only SYMBOL`
 - *"resumen rápido del mercado"* → `bin/analiza --rapido`
-- *"agentes: analiza mi cartera"* → `bin/analiza` (ya es multi-agente)
+- *"agentes: analiza mi cartera"* → `bin/analiza` (already multi-agent)
 
-**Cron (Pi)** — añadido por `bin/install-pi`:
+**Cron (Pi)** — added by `bin/install-pi`:
 ```
-30 6 * * 1     cd /home/pi/jarvis && bin/analiza          >> /tmp/jarvis-mercado.log 2>&1  # completo, lunes
-0  7 * * 0,2-6 cd /home/pi/jarvis && bin/analiza --rapido >> /tmp/jarvis-mercado.log 2>&1  # rápido, resto
+30 6 * * 1     cd /home/pi/jarvis && bin/analiza          >> /tmp/jarvis-mercado.log 2>&1  # full, Monday
+0  7 * * 0,2-6 cd /home/pi/jarvis && bin/analiza --rapido >> /tmp/jarvis-mercado.log 2>&1  # quick, rest of week
 ```
 
-El informe se guarda en `vault/outputs/mercado.md` (visible en el HUD). Telegram
-recibe solo la Visión de cartera; el informe completo va en el email.
+The report is saved to `vault/outputs/mercado.md` (visible in the HUD). Telegram
+gets only the portfolio view; the full report goes in the email.
 
-### Seguimiento con filtro de eventos
+### Event-filtered tracking
 
-`agents/seguimiento.py` + `bin/seguimiento` hacen seguimiento diario de la misma
-`agents/watchlist.txt`, pero al revés que `bin/analiza`: en vez de resumir todo cada
-día, calculan indicadores (RSI 14, SMA 50/200, máx/mín de 52 semanas, ratio de
-volumen), guardan histórico en SQLite (`vault/raw/seguimiento.db`) y **solo llaman
-al LLM para los tickers que disparan una señal**. Días tranquilos: no gasta tokens
-y no manda nada por Telegram (solo actualiza `vault/outputs/seguimiento.md`).
+`agents/seguimiento.py` + `bin/seguimiento` do daily tracking of the same
+`agents/watchlist.txt`, but the opposite way to `bin/analiza`: instead of
+summarizing everything every day, they compute indicators (RSI 14, SMA 50/200,
+52-week high/low, volume ratio), store history in SQLite
+(`vault/raw/seguimiento.db`), and **only call the LLM for tickers that trip a
+signal**. Quiet days: no token spend and nothing sent via Telegram (only updates
+`vault/outputs/seguimiento.md`).
 
-Señales que disparan análisis (umbrales en `TH`, overridables por env `JARVIS_SEG_*`):
-movimiento diario ≥4%, 5d ≥8%, volumen ≥x2 vs media 20d, RSI ≥75 o ≤25, a <2% de
-máx/mín de 52 semanas, cruce de medias 50/200.
+Signals that trigger analysis (thresholds in `TH`, overridable via env
+`JARVIS_SEG_*`): daily move ≥4%, 5d ≥8%, volume ≥2x vs 20d average, RSI ≥75 or
+≤25, within <2% of the 52-week high/low, 50/200 moving-average cross.
 
 ```bash
-bin/seguimiento                 # barrido + veredicto LLM + Telegram si hay señales
-bin/seguimiento scan            # solo la tabla de indicadores, sin LLM
-bin/seguimiento scan --json     # + volcado JSON
-bin/seguimiento scan --notify --always   # notifica aunque no haya nada
-bin/seguimiento score           # cómo se movieron los tickers marcados hace ≥14 días
+bin/seguimiento                 # sweep + LLM verdict + Telegram if there are signals
+bin/seguimiento scan            # indicators table only, no LLM
+bin/seguimiento scan --json     # + JSON dump
+bin/seguimiento scan --notify --always   # notify even if there's nothing
+bin/seguimiento score           # how the tickers flagged ≥14 days ago have moved
 ```
 
-El veredicto es de *seguimiento*, nunca "compra/vende": clasifica en revisar hoy /
-solo vigilar. `score` es diagnóstico del filtro (¿los flags anticiparon algo?), no
-rendimiento de una estrategia.
+The verdict is a *tracking* one, never "buy/sell": it sorts into review today /
+just watch. `score` is a diagnostic of the filter (did the flags anticipate
+anything?), not the performance of a strategy.
 
-**Integración con el email diario**: `bin/seguimiento` corre a las 8:00 y escribe
-`vault/outputs/seguimiento.md`; `bin/analiza` corre a las 8:05 y, si ese fichero es
-de hoy, **añade el seguimiento a su email** ("Jarvis: Mercado …"). Así recibes un
-único correo con el resumen de mercado + el análisis de tu watchlist. Telegram
-manda los dos por separado. Para que `bin/seguimiento` mande su propio email
-(standalone, sin depender de `analiza`): `bin/seguimiento scan --notify --email`.
+**Integration with the daily email**: `bin/seguimiento` runs at 8:00 and writes
+`vault/outputs/seguimiento.md`; `bin/analiza` runs at 8:05 and, if that file is
+from today, **appends the tracking to its email** ("Jarvis: Mercado …"). So you
+get a single email with the market summary + your watchlist analysis. Telegram
+sends the two separately. To have `bin/seguimiento` send its own email
+(standalone, not depending on `analiza`): `bin/seguimiento scan --notify --email`.
 
-**Triggers de voz/Telegram**:
+**Voice / Telegram triggers** (spoken in Spanish):
 - *"cómo va mi watchlist"*, *"algo importante en mis tickers"* → `bin/seguimiento`
 - *"revisa el seguimiento"* / *"¿acertaron los avisos?"* → `bin/seguimiento score`
 
-**Cron (Pi)** — diario, justo antes del `bin/analiza` de las 8:05:
+**Cron (Pi)** — daily, just before the 8:05 `bin/analiza`:
 ```
 0 8 * * * cd /home/pi/jarvis && bin/seguimiento >> /tmp/jarvis-seguimiento.log 2>&1
 0 18 * * 5 cd /home/pi/jarvis && bin/seguimiento score >> /tmp/jarvis-seguimiento.log 2>&1
@@ -309,24 +312,24 @@ manda los dos por separado. Para que `bin/seguimiento` mande su propio email
 
 ## Cardmarket (MKM API)
 
-Wrapper en `agents/cardmarket.py`. Credenciales en `agents/.env` (ver `agents/cardmarket.env.example`).
+Wrapper in `agents/cardmarket.py`. Credentials in `agents/.env` (see `agents/cardmarket.env.example`).
 
 ```bash
-python3 agents/cardmarket.py search "Ragavan"          # buscar carta
+python3 agents/cardmarket.py search "Ragavan"          # search for a card
 python3 agents/cardmarket.py search "Charizard" --game 3  # Pokémon
-python3 agents/cardmarket.py price <idProduct>         # precio guía
-python3 agents/cardmarket.py stock                     # tu stock
-python3 agents/cardmarket.py set-price <id> <precio>   # cambiar precio
-python3 agents/cardmarket.py orders                    # pedidos recientes
+python3 agents/cardmarket.py price <idProduct>         # guide price
+python3 agents/cardmarket.py stock                     # your stock
+python3 agents/cardmarket.py set-price <id> <price>    # change price
+python3 agents/cardmarket.py orders                    # recent orders
 ```
 
-Juegos: `--game 1` Magic (defecto), `2` YuGiOh, `3` Pokémon, `6` Lorcana.
+Games: `--game 1` Magic (default), `2` YuGiOh, `3` Pokémon, `6` Lorcana.
 
-Cómo obtener credenciales API:
-1. Ve a cardmarket.com → tu cuenta → Developer Tools → Create App
-2. Copia App Token + App Secret
-3. Genera Access Token + Access Secret en la misma página
-4. Añádelos a `agents/.env`
+How to get API credentials:
+1. Go to cardmarket.com → your account → Developer Tools → Create App
+2. Copy App Token + App Secret
+3. Generate Access Token + Access Secret on the same page
+4. Add them to `agents/.env`
 
 ## Notifications & Morning Brief
 
@@ -343,14 +346,14 @@ Cómo obtener credenciales API:
 
 ```bash
 # Send to all configured channels
-python3 bridge/notify.py "Texto del mensaje"
+python3 bridge/notify.py "Message text"
 
 # Send only to specific channels
-python3 bridge/notify.py --channels discord,telegram "Mensaje"
+python3 bridge/notify.py --channels discord,telegram "Message"
 python3 bridge/notify.py --channels call "Jarvis llamando"
 
 # Skip voice synthesis (text-only Telegram)
-python3 bridge/notify.py --no-voice "Texto plano"
+python3 bridge/notify.py --no-voice "Plain text"
 ```
 
 Or from Python:
@@ -359,7 +362,7 @@ from bridge.notify import dispatch
 dispatch("Buenos días, Sergio. Tu agenda de hoy...")
 ```
 
-### Morning Brief (cron diario)
+### Morning Brief (daily cron)
 
 `bin/morning-brief` asks Claude to generate a 180-word summary (plan, reminders, habits) and distributes it to all configured channels. The brief is also saved to `vault/outputs/brief.md` and shown in the HUD center panel.
 

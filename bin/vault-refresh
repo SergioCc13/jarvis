@@ -29,12 +29,12 @@ SKILLS=("plan" "habitos" "recordatorios" "inbox")
 for skill in "${SKILLS[@]}"; do
   f="vault/outputs/${skill}.md"
   if [ "$FORCE" -eq 0 ] && [ -f "$f" ] && [ "$(date -r "$f" +%F 2>/dev/null)" = "$TODAY" ]; then
-    echo "[vault-refresh] — $skill ya está al día, se omite"
+    echo "[vault-refresh] — $skill already up to date, skipping"
     continue
   fi
   echo "[vault-refresh] Running skill: $skill"
   claude -p "Ejecuta el skill '$skill' para actualizar vault/outputs/${skill}.md con los datos de hoy." \
-    --output-format text > /dev/null 2>&1 && echo "[vault-refresh] ✓ $skill" || echo "[vault-refresh] ✗ $skill falló"
+    --output-format text > /dev/null 2>&1 && echo "[vault-refresh] ✓ $skill" || echo "[vault-refresh] ✗ $skill failed"
 done
 
 echo "[vault-refresh] Done."
