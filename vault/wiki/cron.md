@@ -12,6 +12,7 @@ A `# === Jarvis ===` block in the crontab, installed/updated by `bin/install-pi`
 
 | When | Job | Note |
 |---|---|---|
+| `*/15 * * * *` | `bin/auto-update` | fast-forward to origin/main, restart affected services |
 | `*/5 * * * *` | `bin/watchdog` | see [[watchdog]] |
 | `*/30 * * * *` | `bin/check-reminders` | see [[watchdog]] |
 | `30 7 * * *` | `bin/vault-refresh` | see [[vault-refresh]] |
@@ -20,9 +21,14 @@ A `# === Jarvis ===` block in the crontab, installed/updated by `bin/install-pi`
 | `0 7 * * *` (today) → Monday/quick | `bin/analiza` | see [[mercado]] · changed by [[pr-2-mercado-cadencia]] |
 | `0 18 * * 5` | `bin/seguimiento score` | filter diagnostic |
 
-**No auto-update** (removed 2026-09-06): updates are manual — `cd ~/jarvis && git pull`
-on each device when you want the latest. There used to be a `*/5 * * * * bin/auto-update`
-that ran `git reset --hard origin/main` with no verification (see [[fix-token-query-string]]).
+**`bin/auto-update` is fast-forward only** (rewritten 2026-09-06). It never runs
+`git reset --hard`, never stashes: if the device has uncommitted changes or local
+commits not on `origin/main` it skips that run and leaves the device where it is
+(and pings Telegram for the unpushed-commits case). Pause on one device with
+`touch <repo>/.autoupdate-pause`. The Mac runs it from a LaunchAgent
+(`agents/com.jarvis.autoupdate.plist`, every 30 min) instead of cron.
+Background: the old version did `git reset --hard origin/main` unverified — see
+[[fix-token-query-string]].
 
 ## Pending ([[ideas-pendientes]])
 
