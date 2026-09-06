@@ -11,8 +11,10 @@ bridge/devices.json
 # Device agent token — generated automatically per device
 agents/config.json
 
-# Device agent local env (contains Pi IP and bridge token — never commit)
+# Device agent local env (contains Pi IP and bridge token — never commit).
+# The glob also catches timestamped backups (agents/.env.bak-*) the tooling makes.
 agents/.env
+agents/.env.*
 
 # Device agent shell-action audit log — commands executed on this device
 agents/shell-audit.log
