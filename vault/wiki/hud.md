@@ -1,37 +1,37 @@
 ---
 title: HUD
-tags: [subsistema, frontend]
-status: activo
+tags: [subsystem, frontend]
+status: active
 updated: 2026-09-01
-summary: Dashboard web (hud/*.html) servido estático — orbe, chat, voz, estado, SSE.
+summary: Web dashboard (hud/*.html) served statically — orb, chat, voice, status, SSE.
 ---
 
 # HUD — `hud/`
 
-Páginas estáticas que sirve el [[bridge]] (o Tailscale). El token se inyecta por dispositivo
-en `hud/jarvis-config.js` (gitignored).
+Static pages served by the [[bridge]] (or Tailscale). The token is injected per device into
+`hud/jarvis-config.js` (gitignored).
 
-| Fichero | Qué es |
+| File | What it is |
 |---|---|
-| `index.html` | dashboard principal: [[orbe]], chat, botón de voz, tira de estado, calendario, skills |
-| `voice.html` | página de voz a pantalla completa (orbe propio, ya bien cableado) |
-| `chat.html` | chat a secas |
+| `index.html` | main dashboard: [[orbe]], chat, voice button, status strip, calendar, skills |
+| `voice.html` | full-screen voice page (its own orb, already well wired) |
+| `chat.html` | plain chat |
 
-## Flujo de chat
+## Chat flow
 
-`sendChat` → `POST /chat` → `job_id` → `_pollChatJob` cada 2 s sobre `/chat/result`.
-Sobrevive a recargar / bloquear el móvil. El estado (`listening` / `thinking` / `idle`)
-se refleja en el panel de chat **y** en el [[orbe]] vía `hudCore()`.
+`sendChat` → `POST /chat` → `job_id` → `_pollChatJob` every 2 s against `/chat/result`.
+Survives a reload / the phone locking. The state (`listening` / `thinking` / `idle`) is
+reflected in the chat panel **and** in the [[orbe]] via `hudCore()`.
 
-## Voz en el HUD
+## Voice in the HUD
 
-`startVoice` graba con VAD (auto-stop tras silencio), `_sendVoice` → `POST /voice`,
-reproduce el mp3 de vuelta. El orbe pasa a `speaking` mientras suena.
+`startVoice` records with VAD (auto-stops after silence), `_sendVoice` → `POST /voice`,
+plays the mp3 back. The orb goes to `speaking` while it plays.
 
-## Eventos en vivo
+## Live events
 
-`EventSource('/events')` → avisos del bridge (p. ej. "usando Ollama") aparecen como notice.
+`EventSource('/events')` → bridge notices (e.g. "using Ollama") show up as a notice.
 
-## Relacionado
+## Related
 
 [[orbe]] · [[bridge]] · [[pr-3-orbe-vivo]]
