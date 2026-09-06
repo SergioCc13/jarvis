@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Jarvis device agent — launchd LaunchAgent for macOS.
+
+  Install:
+    1. Fill in agents/.env first (cp agents/env.example agents/.env && edit it)
+    2. Edit the two </string> paths below if ~/jarvis isn't at
+       /Users/<you>/jarvis, and REPLACE_USER with your actual macOS username
+    3. Install:
+         cp agents/com.jarvis.device-agent.plist ~/Library/LaunchAgents/
+         chmod +x agents/start-agent.sh
+         launchctl load ~/Library/LaunchAgents/com.jarvis.device-agent.plist
+
+  Logs: tail -f /tmp/jarvis-agent.log
+  Restart after a code change: launchctl kickstart -k gui/$(id -u)/com.jarvis.device-agent
+  Uninstall: launchctl unload ~/Library/LaunchAgents/com.jarvis.device-agent.plist
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jarvis.device-agent</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/REPLACE_USER/jarvis/agents/start-agent.sh</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/REPLACE_USER/jarvis</string>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/jarvis-agent.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/jarvis-agent.log</string>
+</dict>
+</plist>

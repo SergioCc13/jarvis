@@ -124,6 +124,9 @@ source agents/.env && python3 agents/device_agent.py
 `JARVIS_HUB_TOKEN` must match the `"token"` field in `bridge/config.json` on the Pi — the hub requires it to authenticate device registrations. The agent stores its own token in `agents/config.json` (gitignored).
 
 Add it to a launchd plist (Mac) or systemd service (Linux) for auto-start on boot.
+On Mac, `agents/com.jarvis.device-agent.plist` + `agents/start-agent.sh` are
+ready to use — see the install steps in the comment at the top of the plist.
+`KeepAlive` also relaunches it if it crashes, not just on boot.
 
 ## Modo multi-agente
 
