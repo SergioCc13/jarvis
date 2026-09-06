@@ -1,47 +1,44 @@
 ---
-title: Agente de dispositivo
-tags: [subsistema, red]
-status: activo
+title: Device agent
+tags: [subsystem, network]
+status: active
 updated: 2026-09-01
-summary: agents/device_agent.py — HTTP :8793 en cada equipo; ejecuta acciones (shell, apps, volumen…).
+summary: agents/device_agent.py — HTTP :8793 on each machine; runs actions (shell, apps, volume…).
 ---
 
-# Agente de dispositivo — `agents/device_agent.py`
+# Device agent — `agents/device_agent.py`
 
-Corre en Mac/PC. Al arrancar se registra en el hub ([[bridge]] `/register`) y hace heartbeat
-cada 60 s. Expone `POST /execute` para que Jarvis controle el equipo por Tailscale.
+Runs on Mac/PC. On startup it registers with the hub ([[bridge]] `/register`) and heartbeats
+every 60 s. Exposes `POST /execute` so Jarvis can control the machine over Tailscale.
 
-## Acciones (`execute_action`)
+## Actions (`execute_action`)
 
-`shell` (arbitrario), `open_app`, `open_url`, `volume`, `mute`, `notify`, `screenshot`,
-`sleep`, `get_status` (batería, apps). Capacidades según plataforma.
+`shell` (arbitrary), `open_app`, `open_url`, `volume`, `mute`, `notify`, `screenshot`,
+`sleep`, `get_status` (battery, apps). Capabilities depend on the platform.
 
-## Endurecimiento ([[pr-6-hardening]])
+## Hardening ([[pr-6-hardening]])
 
-- Bind a la **IP de Tailscale** en vez de `0.0.0.0` (`JARVIS_AGENT_BIND` para forzar).
-- Token **solo** por cabecera `X-Jarvis-Token` (2026-09-03: se quitó el fallback
-  `?token=` que quedaba "por compat" — la query string se filtra a logs, ver
-  [[fix-token-query-string]]). `_try_register()` manda `HUB_TOKEN` igual, por header.
-- **`JARVIS_AGENT_ALLOW_SHELL=0`** desactiva `shell` del todo.
-- Cuerpo POST ≤ 1 MiB; salida de shell recortada a 20k.
-- **`JARVIS_AGENT_SHELL_PIN`** (2026-09-03): segundo secreto, solo para
-  `action:"shell"`, separado del token del dispositivo — hay que mandarlo en
-  `params.pin`, comparación con `hmac.compare_digest` (tiempo constante).
-  Robar el token solo ya no alcanza para RCE. Auditoría de cada intento
-  (correcto o no) en `agents/shell-audit.log`. Recuperación si te olvidás el
-  PIN: `GET /pin-recover` (autenticado con el token) te lo manda por email —
-  usa `JARVIS_EMAIL_*` propio de `agents/.env`, TLS siempre verificado (sin el
-  fallback MITM-tolerante de `bridge/notify.py`, no corresponde para un
-  secreto). Blanco = `shell` sigue funcionando solo con el token, como antes.
+- Bind to the **Tailscale IP** instead of `0.0.0.0` (`JARVIS_AGENT_BIND` to override).
+- Token **only** via the `X-Jarvis-Token` header (2026-09-03: the `?token=` fallback that
+  lingered "for compat" was removed — the query string leaks into logs, see
+  [[fix-token-query-string]]). `_try_register()` sends `HUB_TOKEN` the same way, by header.
+- **`JARVIS_AGENT_ALLOW_SHELL=0`** disables `shell` entirely.
+- POST body ≤ 1 MiB; shell output truncated to 20k.
+- **`JARVIS_AGENT_SHELL_PIN`** (2026-09-03): a second secret, for `action:"shell"` only,
+  separate from the device token — it has to be sent in `params.pin`, compared with
+  `hmac.compare_digest` (constant time). Stealing the token alone is no longer enough for RCE.
+  Every attempt (right or wrong) is audited in `agents/shell-audit.log`. If you forget the PIN:
+  `GET /pin-recover` (authenticated with the token) emails it to you — uses `agents/.env`'s own
+  `JARVIS_EMAIL_*`, TLS always verified (no MITM-tolerant fallback like `bridge/notify.py`'s —
+  not appropriate for a secret). By design, `shell` still works with just the token, as before.
 
-## Riesgo residual
+## Residual risk
 
-`shell=True` por HTTP: aceptable solo porque está tras Tailscale y el token ya no
-puede filtrarse por URL/logs (ver [[fix-token-query-string]]). Con `JARVIS_AGENT_SHELL_PIN`
-configurado, un token filtrado ya no alcanza por sí solo — pero si el PIN se
-comparte por el mismo canal que el token (ej. ambos en el mismo mensaje), la
-protección extra se pierde. No exponer nunca fuera de la tailnet.
+`shell=True` over HTTP: acceptable only because it's behind Tailscale and the token can no
+longer leak via URL/logs (see [[fix-token-query-string]]). With `JARVIS_AGENT_SHELL_PIN` set,
+a leaked token isn't enough on its own — but if the PIN travels over the same channel as the
+token (e.g. both in one message), that extra protection is lost. Never expose outside the tailnet.
 
-## Relacionado
+## Related
 
 [[bridge]] · [[pr-6-hardening]]
