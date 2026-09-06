@@ -127,6 +127,35 @@ def send_telegram(message: str) -> tuple[bool, str]:
         return False, str(e)
 
 
+def send_telegram_button(text: str, button_text: str, url: str) -> tuple[bool, str]:
+    """Send a Telegram message with a one-tap inline button that opens `url`.
+
+    This is how Jarvis reaches an iPhone: iOS won't run a background HTTP
+    agent like agents/device_agent.py, so instead of a silent remote action
+    the phone gets a push notification with a button — one tap opens the URL
+    (app deep link or https link) on the phone. See vault/wiki/device-agent.md.
+    """
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return False, "JARVIS_TELEGRAM_TOKEN or JARVIS_TELEGRAM_CHAT_ID not set"
+    payload = json.dumps({
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": text,
+        "reply_markup": {"inline_keyboard": [[{"text": button_text, "url": url}]]},
+    }).encode()
+    req = urllib.request.Request(
+        _tg_url("sendMessage"), data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        _urlopen(req, timeout=10)
+        return True, "ok"
+    except urllib.error.HTTPError as e:
+        return False, f"Telegram HTTP {e.code}: {e.read().decode(errors='replace')[:200]}"
+    except Exception as e:
+        return False, str(e)
+
+
 def send_telegram_voice(mp3_bytes: bytes, caption: str = "") -> tuple[bool, str]:
     """Send an MP3 as a Telegram voice note."""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
@@ -290,11 +319,20 @@ if __name__ == "__main__":
     parser.add_argument("--subject", "-s", default="Jarvis", help="Email subject line")
     parser.add_argument("--attach", "-a", action="append", default=[],
                         help="File to attach to the email (repeatable)")
+    parser.add_argument("--phone-button", nargs=2, metavar=("LABEL", "URL"),
+                        help="Send a one-tap button (Telegram) that opens URL on the phone, e.g. "
+                             "--phone-button 'Abrir YouTube' 'https://youtube.com'")
     args = parser.parse_args()
 
     msg = args.message or (sys.stdin.read().strip() if not sys.stdin.isatty() else None)
     if not msg:
         parser.error("Provide a message as argument or via stdin")
+
+    if args.phone_button:
+        label, url = args.phone_button
+        ok, detail = send_telegram_button(msg, label, url)
+        print(f"  {'✓' if ok else '✗'} telegram-button: {detail}")
+        sys.exit(0 if ok else 1)
 
     chs = [c.strip() for c in args.channels.split(",")] if args.channels else None
     results = dispatch(msg, channels=chs, voice_for_telegram=not args.no_voice,

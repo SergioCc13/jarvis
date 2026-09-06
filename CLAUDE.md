@@ -93,6 +93,25 @@ never store the PIN anywhere outside `agents/.env`. If they forgot it:
 `curl -s -H "X-Jarvis-Token: <token>" "http://<ip>:8793/pin-recover"` emails
 it to them (requires `JARVIS_EMAIL_*` configured on that device).
 
+### Controlling an iPhone (no device agent — Telegram button instead)
+
+iOS won't run a background HTTP server like `agents/device_agent.py` (no
+`shell`, `open_url`, etc. via silent remote call — Apple's sandboxing blocks
+it, and the paid workaround, Pushcut, was dropped in favor of this free
+approach). Instead, when the target device is the iPhone, send a Telegram
+message with a one-tap button that opens the URL/app deep link:
+
+```bash
+python3 bridge/notify.py --phone-button "Abrir YouTube" "https://www.youtube.com" \
+  "Toca para abrir YouTube en el móvil"
+```
+
+This needs `JARVIS_TELEGRAM_TOKEN` + `JARVIS_TELEGRAM_CHAT_ID` in `bridge/.env`
+(same ones the Telegram bot already uses). One tap is unavoidable — Apple
+doesn't allow a truly silent remote trigger without a paid service. Use this
+whenever the user asks to open something "en mi móvil"/"en el iPhone" instead
+of trying to reach it like a registered device.
+
 ### Starting an agent on a device
 
 ```bash
