@@ -1,5 +1,5 @@
 {
-  "generated": "2026-09-06T18:08:47Z",
+  "generated": "2026-09-06T19:45:14Z",
   "note_count": 24,
   "nodes": [
     {
@@ -61,6 +61,7 @@
         "seguimiento",
         "mercado",
         "pr-2-mercado-cadencia",
+        "fix-token-query-string",
         "ideas-pendientes"
       ]
     },
@@ -517,6 +518,10 @@
     [
       "coste-tokens",
       "vault-refresh"
+    ],
+    [
+      "cron",
+      "fix-token-query-string"
     ],
     [
       "cron",

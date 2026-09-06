@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Jarvis safe auto-update — launchd LaunchAgent for macOS.
+
+  Runs bin/auto-update every 30 min. That script is fast-forward only:
+  it never runs `git reset --hard`, never stashes, and skips the update
+  entirely (leaving this Mac on its current commit) if there are
+  uncommitted changes or local commits not yet on origin/main.
+
+  Install:
+    1. Edit the two paths below if ~/jarvis isn't at /Users/<you>/jarvis,
+       and replace REPLACE_USER with your macOS username (id -un).
+    2. cp agents/com.jarvis.autoupdate.plist ~/Library/LaunchAgents/
+       launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.jarvis.autoupdate.plist
+
+  Pause without uninstalling:  touch ~/jarvis/.autoupdate-pause
+  Uninstall:
+    launchctl bootout gui/$(id -u)/com.jarvis.autoupdate
+    rm ~/Library/LaunchAgents/com.jarvis.autoupdate.plist
+  Log: tail -f /tmp/jarvis-update.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.jarvis.autoupdate</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/REPLACE_USER/jarvis/bin/auto-update</string>
+    </array>
+    <key>WorkingDirectory</key>
+    <string>/Users/REPLACE_USER/jarvis</string>
+    <key>StartInterval</key>
+    <integer>1800</integer>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>/tmp/jarvis-update.log</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/jarvis-update.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+</dict>
+</plist>

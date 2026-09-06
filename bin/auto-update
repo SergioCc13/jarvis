@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+# Safe auto-update for Jarvis — fast-forward only, never discards local work.
+#
+# vs. the old version (removed 2026-09-06) which did `git reset --hard
+# origin/main` and silently stashed/orphaned anything local:
+#
+#   - Uncommitted changes            → skip this run, do NOT stash or reset.
+#   - Local commits not on origin     → skip this run, they are never overwritten.
+#   - History diverged (no ff)        → skip this run and alert.
+#   - Otherwise                       → `git merge --ff-only`, restart affected services.
+#
+# So the worst case is "this device stays on its current commit and tells you
+# why" — never lost edits, never lost commits.
+#
+# Runs from cron (Pi) or a LaunchAgent (Mac). Disable without uninstalling:
+#   export JARVIS_AUTOUPDATE=0            (in the unit's environment), or
+#   touch <repo>/.autoupdate-pause        (gitignored)
+set -uo pipefail
+
+JARVIS_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$JARVIS_DIR"
+
+[ "${JARVIS_AUTOUPDATE:-1}" = "0" ] && exit 0
+[ -f "$JARVIS_DIR/.autoupdate-pause" ] && { echo "[auto-update] paused (.autoupdate-pause present)"; exit 0; }
+
+notify() {
+  [ -f bridge/notify.py ] || return 0
+  python3 bridge/notify.py --no-voice "[auto-update @ $(hostname)] $1" >/dev/null 2>&1 || true
+}
+
+# Network check — silent no-op if offline.
+git fetch origin main -q 2>/dev/null || exit 0
+
+BEFORE=$(git rev-parse HEAD)
+AFTER=$(git rev-parse origin/main)
+[ "$BEFORE" = "$AFTER" ] && exit 0   # already up to date
+
+# 1. Uncommitted work → never touch it. Skip quietly (this is a normal state
+#    while someone is editing; no alert, just a log line).
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "[auto-update] $(date '+%H:%M:%S') — uncommitted changes present, skipping update to $AFTER"
+  exit 0
+fi
+
+# 2. Local commits not yet on origin/main → never discard them. Alert once.
+if ! git merge-base --is-ancestor HEAD "$AFTER" 2>/dev/null; then
+  echo "[auto-update] $(date '+%H:%M:%S') — local commits not on origin/main, skipping"
+  STATE="$JARVIS_DIR/bridge/.autoupdate-warned"
+  if [ "$(cat "$STATE" 2>/dev/null)" != "$BEFORE" ]; then
+    echo "$BEFORE" > "$STATE" 2>/dev/null || true
+    notify "this device has local commits not pushed to origin/main — auto-update is paused here until you push or reset them (git log origin/main..HEAD)"
+  fi
+  exit 0
+fi
+
+# 3. Safe path: fast-forward only. Cannot rewrite or drop anything.
+echo "[auto-update] $(date '+%H:%M:%S') — updating $BEFORE -> $AFTER"
+if ! git merge --ff-only "$AFTER" -q; then
+  echo "[auto-update] fast-forward failed unexpectedly — leaving device on $BEFORE"
+  notify "fast-forward to $AFTER failed unexpectedly — device left on $(git rev-parse --short HEAD), needs a look"
+  exit 0
+fi
+rm -f "$JARVIS_DIR/bridge/.autoupdate-warned" 2>/dev/null || true
+
+CHANGED=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null || true)
+
+# ── restart only the services whose files changed ────────────────────────────
+# `sudo -n` (non-interactive) first so a NOPASSWD sudoers rule is used without
+# hanging on polkit; then plain systemctl; then give up with a clear message.
+_restart_systemd() {
+  local unit="$1"
+  if sudo -n systemctl restart "$unit" 2>/dev/null; then
+    echo "[auto-update] $unit restarted (sudo)"
+  elif systemctl restart "$unit" 2>/dev/null; then
+    echo "[auto-update] $unit restarted"
+  else
+    echo "[auto-update] could not restart $unit — needs manual restart"
+  fi
+}
+
+if echo "$CHANGED" | grep -qE "^bridge/(server|notify)\.py" && command -v systemctl >/dev/null 2>&1; then
+  _restart_systemd jarvis-bridge
+fi
+
+if echo "$CHANGED" | grep -q "^bridge/telegram_bot.py" && command -v systemctl >/dev/null 2>&1; then
+  _restart_systemd jarvis-telegram
+fi
+
+if echo "$CHANGED" | grep -q "^agents/device_agent\.py"; then
+  if command -v launchctl >/dev/null 2>&1 && launchctl list 2>/dev/null | grep -q com.jarvis.device-agent; then
+    launchctl kickstart -k "gui/$(id -u)/com.jarvis.device-agent" 2>/dev/null \
+      && echo "[auto-update] device_agent restarted (launchd)" \
+      || echo "[auto-update] could not restart device_agent — needs manual restart"
+  elif command -v systemctl >/dev/null 2>&1 && systemctl list-unit-files jarvis-agent.service >/dev/null 2>&1; then
+    _restart_systemd jarvis-agent
+  fi
+fi
+
+if echo "$CHANGED" | grep -qE "^hud/"; then
+  echo "[auto-update] HUD updated — reload the browser to see changes"
+fi
+
+echo "[auto-update] done ($BEFORE -> $AFTER)"

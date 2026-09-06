@@ -53,10 +53,14 @@ remote shell), a log leak gave a path to command execution without even being on
   anyone on the same WiFi/LAN. Real mitigation: a firewall rule (Windows/macOS/Linux depending
   on the device) that only allows those ports from the Tailscale range — not applied, it's a
   live system change to decide carefully, not something to touch lightly.
-- `bin/auto-update`'s trust model: it ran `git reset --hard origin/main` with no verification
-  every 5 min — if the GitHub account `SergioCc13` were compromised, the code would land and run
-  on its own within ≤5 min. **Removed 2026-09-06** (`bin/auto-update` deleted, cron/LaunchAgent
-  gone): updates are now manual (`git pull` per device). 2FA on the GitHub account and branch
-  protection on `main` are still worth setting up.
+- `bin/auto-update`'s trust model: the old version did `git reset --hard origin/main` every
+  5 min with no verification — it could silently orphan local work, and a compromised
+  `SergioCc13` GitHub account would run code on every device within ≤5 min. **Rewritten
+  2026-09-06**: it is now **fast-forward only** — no `reset --hard`, no stash; it skips the
+  run (leaving the device on its current commit, pinging Telegram) if there are uncommitted
+  changes or unpushed local commits. This removes the *data-loss* risk. The *supply-chain*
+  risk (a stolen GitHub token → code on every device, now within ≤15 min) is unchanged;
+  mitigations outside this repo: 2FA on the GitHub account, branch protection on `main`, and
+  optionally signed commits + `git verify-commit` in the script.
 
 See [[bridge]] · [[device-agent]].

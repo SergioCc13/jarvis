@@ -3,9 +3,8 @@
 # Run from inside the jarvis repo: bash bin/setup-device
 #
 # What it does:
-#   1. Starts the device agent (agents/device_agent.py)
-#
-# Updates are manual: `cd ~/jarvis && git pull` when you want the latest.
+#   1. Installs the safe auto-update cron (fast-forward only, never resets — see bin/auto-update)
+#   2. Starts the device agent (agents/device_agent.py)
 #
 # Usage:
 #   git clone <repo> ~/jarvis && cd ~/jarvis && bash bin/setup-device
@@ -18,8 +17,29 @@ echo "=== Jarvis device setup ==="
 echo "Dir: $JARVIS_DIR"
 echo ""
 
-# ── Device agent ────────────────────────────────────────────────────
-echo "[1/1] Device agent setup..."
+# ── 1. Safe auto-update cron ────────────────────────────────────────
+echo "[1/2] Installing safe auto-update cron (every 15 min)..."
+
+CRON_LINE="*/15 * * * * cd $JARVIS_DIR && bash bin/auto-update >> /tmp/jarvis-update.log 2>&1"
+MARKER="# jarvis-auto-update"
+
+# Remove any old entry, add the current one
+( crontab -l 2>/dev/null | grep -v "$MARKER" | grep -v "auto-update" ; \
+  echo "$MARKER" ; echo "$CRON_LINE" ) | crontab -
+
+# Ensure the cron daemon is running (WSL2 needs this)
+if ! pgrep -x cron >/dev/null 2>&1 && ! pgrep -x crond >/dev/null 2>&1; then
+  echo "  Starting cron daemon..."
+  sudo service cron start 2>/dev/null || sudo crond 2>/dev/null || true
+fi
+
+echo "  ✓ Auto-update cron installed (fast-forward only — never discards local work)"
+echo "    Pause on this device: touch $JARVIS_DIR/.autoupdate-pause"
+echo "    Log: tail -f /tmp/jarvis-update.log"
+
+# ── 2. Device agent ────────────────────────────────────────────────
+echo ""
+echo "[2/2] Device agent setup..."
 
 if [ ! -f agents/.env ]; then
   echo "  agents/.env not found — copy and fill in:"
@@ -42,4 +62,6 @@ fi
 echo ""
 echo "=== Setup complete ==="
 echo ""
-echo "Updates are manual: run 'git pull' in $JARVIS_DIR when you want the latest."
+echo "This device fast-forwards to origin/main every 15 min. If it has uncommitted"
+echo "changes or unpushed commits, it skips the update (and pings you for the latter)"
+echo "rather than touch your work."

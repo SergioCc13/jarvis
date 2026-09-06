@@ -32,6 +32,10 @@ bridge/reminders_state.json
 bridge/.claude-session.lock
 bridge/hud_media/
 
+# auto-update local state (per-device pause switch + "already warned" marker)
+.autoupdate-pause
+bridge/.autoupdate-warned
+
 # Personal vault content (habits, plans, reminders, notes) — keep the folders, not the data
 vault/outputs/*
 !vault/outputs/.gitkeep
