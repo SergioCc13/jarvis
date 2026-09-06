@@ -12,7 +12,6 @@ Bloque `# === Jarvis ===` en el crontab, instalado/actualizado por `bin/install-
 
 | Cuándo | Job | Nota |
 |---|---|---|
-| `*/5 * * * *` | `bin/auto-update` | git pull + reinicio de servicios afectados |
 | `*/5 * * * *` | `bin/watchdog` | ver [[watchdog]] |
 | `*/30 * * * *` | `bin/check-reminders` | ver [[watchdog]] |
 | `30 7 * * *` | `bin/vault-refresh` | ver [[vault-refresh]] |
@@ -20,6 +19,10 @@ Bloque `# === Jarvis ===` en el crontab, instalado/actualizado por `bin/install-
 | `0 8 * * *` | `bin/seguimiento` | ver [[seguimiento]] |
 | `0 7 * * *` (hoy) → lunes/rápido | `bin/analiza` | ver [[mercado]] · lo cambia [[pr-2-mercado-cadencia]] |
 | `0 18 * * 5` | `bin/seguimiento score` | diagnóstico del filtro |
+
+**Sin auto-update** (quitado 2026-09-06): las actualizaciones son manuales — `cd ~/jarvis && git pull`
+en cada dispositivo cuando quieras la última versión. Antes había un `*/5 * * * * bin/auto-update`
+que hacía `git reset --hard origin/main` sin verificación (ver [[fix-token-query-string]]).
 
 ## Pendiente ([[ideas-pendientes]])
 
