@@ -1,17 +1,17 @@
 ---
-title: "PR #6 — endurecimiento"
+title: "PR #6 — hardening"
 tags: [pr, ops]
-status: abierto
+status: open
 updated: 2026-09-01
-summary: Lock de sesión Claude, agente de dispositivo más cerrado, vault-refresh sin gasto extra.
+summary: Claude session lock, a more locked-down device agent, vault-refresh with no extra spend.
 ---
 
 # PR #6 — `feat/endurece-sesion-agente-vault`
 
-- **`bridge/session_lock.py`** (nuevo): lock `fcntl` para que [[bridge]] y [[telegram]] no
-  hagan `claude --resume <misma sesión>` a la vez. Ver [[sesion-claude]].
-- **`agents/device_agent.py`:** bind a IP de Tailscale, token por cabecera `X-Jarvis-Token`,
-  `JARVIS_AGENT_ALLOW_SHELL=0`, cuerpo ≤ 1 MiB. Ver [[device-agent]].
-- **`bin/vault-refresh`:** omite skills ya frescos hoy. Ver [[vault-refresh]].
+- **`bridge/session_lock.py`** (new): an `fcntl` lock so [[bridge]] and [[telegram]] don't
+  run `claude --resume <same session>` at the same time. See [[sesion-claude]].
+- **`agents/device_agent.py`:** bind to the Tailscale IP, token via the `X-Jarvis-Token` header,
+  `JARVIS_AGENT_ALLOW_SHELL=0`, body ≤ 1 MiB. See [[device-agent]].
+- **`bin/vault-refresh`:** skips skills already refreshed today. See [[vault-refresh]].
 
-Ver [[sesion-claude]] · [[device-agent]] · [[vault-refresh]].
+See [[sesion-claude]] · [[device-agent]] · [[vault-refresh]].

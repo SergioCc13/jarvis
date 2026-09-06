@@ -1,20 +1,19 @@
 ---
-title: "PR #3 — orbe vivo"
+title: "PR #3 — living orb"
 tags: [pr, frontend]
-status: abierto
+status: open
 updated: 2026-09-01
-summary: El orbe del HUD no reaccionaba al pensar ni al hablar; añade estado thinking + hudCore().
+summary: The HUD orb didn't react while thinking or speaking; adds a thinking state + hudCore().
 ---
 
 # PR #3 — `feat/orbe-vivo-pensando-hablando`
 
-**Problema:** el [[orbe]] estaba siempre igual. Lo movía solo `renderAudio()` (logs de
-voicemode); el chat de texto y el micro del HUD nunca lo tocaban, y `renderAudio` lo forzaba
-a `idle` cada 1,5 s.
+**Problem:** the [[orbe]] always looked the same. Only `renderAudio()` moved it (voicemode logs);
+the HUD's text chat and mic never touched it, and `renderAudio` forced it back to `idle` every 1.5 s.
 
-**Fix (todo en `hud/index.html`):**
-- Estado `thinking` nuevo (superficie hirviendo, pulso, bultos girando) + halo CSS.
-- `hudCore(state)`: mientras el chat/voz del HUD está activo, es dueño del orbe.
-- `_setChatState` y `_sendVoice` conducen el orbe; `speaking` atado a la reproducción real.
+**Fix (all in `hud/index.html`):**
+- New `thinking` state (boiling surface, pulse, orbiting blobs) + a CSS halo.
+- `hudCore(state)`: while the HUD chat/voice is active, it owns the orb.
+- `_setChatState` and `_sendVoice` drive the orb; `speaking` is tied to actual playback.
 
-Ver [[orbe]] · [[hud]].
+See [[orbe]] · [[hud]].
