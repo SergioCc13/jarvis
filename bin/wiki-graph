@@ -27,7 +27,6 @@ import json
 import os
 import re
 import sys
-from datetime import datetime, timezone
 
 WIKI = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "vault", "wiki")
 GRAPH_JSON = os.path.join(WIKI, "_graph.json")
@@ -125,8 +124,9 @@ def build_graph(notes):
         inbound[b] += 1
     orphans = sorted(i for i in ids if inbound[i] == 0 and i not in ("moc",))
     no_summary = sorted(i for i in ids if not notes[i]["summary"])
+    # No timestamp on purpose: the output stays a pure function of the notes,
+    # so `--check` (and git) only flag a real content change. Git records when.
     return {
-        "generated": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "note_count": len(notes),
         "nodes": [notes[i] for i in sorted(notes)],
         "edges": sorted(edges),
@@ -161,7 +161,7 @@ def render_graph_md(graph, broken, orphans):
         "summary: Índice completo del wiki, regenerado por bin/wiki-graph. No editar a mano.",
         "---", "",
         f"# Grafo del wiki — {d['note_count']} notas",
-        f"_Generado {d['generated']} por `bin/wiki-graph`. **No editar a mano.**_", "",
+        "_Generado por `bin/wiki-graph` a partir del frontmatter y los `[[enlaces]]`. **No editar a mano.**_", "",
         render_index_md(d["nodes"], links=True),
     ]
     if broken:
