@@ -58,10 +58,11 @@ ejecución de comandos sin necesidad de estar en la tailnet.
   que solo permita esos puertos desde el rango de Tailscale — no aplicado, es un
   cambio de sistema en vivo que hay que decidir con cuidado, no algo para tocar
   sin más.
-- Modelo de confianza de `bin/auto-update`: hace `git reset --hard origin/main`
-  sin ninguna verificación y ahora sí reinicia los servicios de forma fiable — si
-  se compromete la cuenta de GitHub `SergioCc13`, el código llega y se ejecuta
-  solo en ≤5 min. Mitigación fuera de este repo: activar 2FA en la cuenta de
-  GitHub, considerar protección de rama en `main`.
+- Modelo de confianza de `bin/auto-update`: hacía `git reset --hard origin/main`
+  sin ninguna verificación cada 5 min — si se comprometía la cuenta de GitHub
+  `SergioCc13`, el código llegaba y se ejecutaba solo en ≤5 min. **Quitado
+  2026-09-06** (`bin/auto-update` borrado, cron/LaunchAgent fuera): las
+  actualizaciones son ahora manuales (`git pull` por dispositivo). Sigue
+  conviniendo 2FA en la cuenta de GitHub y protección de rama en `main`.
 
 Ver [[bridge]] · [[device-agent]].
