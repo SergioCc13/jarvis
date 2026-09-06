@@ -100,6 +100,7 @@ def _send_pin_recovery_email():
 def load_config():
     cfg = {}
     if os.path.exists(CONFIG_PATH):
+        os.chmod(CONFIG_PATH, 0o600)  # tighten perms on configs written before this
         with open(CONFIG_PATH) as f:
             cfg = json.load(f)
     if "token" not in cfg:
@@ -109,8 +110,12 @@ def load_config():
 
 
 def save_config(cfg):
-    with open(CONFIG_PATH, "w") as f:
+    # 0600 — this file holds the device token, which alone is enough to reach
+    # /execute. Don't leave it world-readable on a shared machine.
+    fd = os.open(CONFIG_PATH, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
         json.dump(cfg, f, indent=2)
+    os.chmod(CONFIG_PATH, 0o600)
 
 
 CONFIG = load_config()
@@ -264,8 +269,19 @@ def execute_action(action, params):
         title = params.get("title", "Jarvis")
         message = params.get("message", "")
         if PLATFORM == "darwin":
-            script = f'display notification "{message}" with title "{title}"'
-            r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True)
+            # Pass title/message as argv, never interpolated into the script
+            # source: a `"` in either would otherwise let the caller inject
+            # arbitrary AppleScript (incl. `do shell script "…"`), giving
+            # remote code execution that bypasses JARVIS_AGENT_SHELL_PIN.
+            script = (
+                "on run {theMessage, theTitle}\n"
+                "    display notification theMessage with title theTitle\n"
+                "end run"
+            )
+            r = subprocess.run(
+                ["osascript", "-e", script, str(message), str(title)],
+                capture_output=True, text=True,
+            )
             return r.returncode == 0, "ok"
         return False, "notify not supported on this platform"
 
@@ -313,7 +329,7 @@ class Handler(BaseHTTPRequestHandler):
         # Header only — see the module-level comment on why the old
         # query-string ?token= fallback was removed rather than kept.
         token = self.headers.get("X-Jarvis-Token", "")
-        return bool(token) and token == CONFIG["token"]
+        return bool(token) and hmac.compare_digest(token, CONFIG["token"])
 
     def _json(self, code, obj):
         # No CORS headers: nothing in this repo calls /execute or /status from
@@ -387,8 +403,9 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     # bind to the Tailscale interface, not every interface, when we can
     bind = os.environ.get("JARVIS_AGENT_BIND") or get_tailscale_ip() or "0.0.0.0"
+    _tok = CONFIG["token"]
     print(f"[agent] Device: {DEVICE_NAME} ({PLATFORM})")
-    print(f"[agent] Token:  {CONFIG['token']}")
+    print(f"[agent] Token:  {_tok[:4]}…{_tok[-4:]}  (full value in agents/config.json)")
     print(f"[agent] Listening on {bind}:{PORT}"
           + ("" if bind != "0.0.0.0" else "  (todas las interfaces — set JARVIS_AGENT_BIND)"))
     print(f"[agent] shell action: {'on' if ALLOW_SHELL else 'OFF'}")
