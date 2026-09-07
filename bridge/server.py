@@ -270,7 +270,10 @@ def register_device(info):
             import datetime as _dt
             last_dt = _dt.datetime.strptime(prev["last_seen"], "%Y-%m-%dT%H:%M:%SZ")
             elapsed_min = (_dt.datetime.utcnow() - last_dt).total_seconds() / 60
-            if elapsed_min > 5:
+            # 20 min, not 5: heartbeats are every 60s, so a brief network hiccup
+            # (laptop sleep, Tailscale re-handshake, WiFi blip) shouldn't count
+            # as a "reconnect" and spam a notification for it.
+            if elapsed_min > 20:
                 is_reconnect = True
         except Exception:
             pass

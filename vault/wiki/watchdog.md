@@ -11,7 +11,8 @@ summary: bin/watchdog watches services; bin/check-reminders warns about upcoming
 ## `bin/watchdog` (every 5 min)
 
 Checks the bridge (:8792), the Telegram bot process, and devices (`last_seen` in
-`devices.json`, offline >5 min). Alerts via [[notificaciones]] only on a state **change**
+`devices.json`, offline >20 min — raised from 5 min so a brief network hiccup doesn't spam a
+notification). Alerts via [[notificaciones]] only on a state **change**
 (stores `bridge/watchdog_state.json`).
 
 ## `bin/check-reminders` (every 30 min)

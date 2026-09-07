@@ -24,7 +24,10 @@ DEVICES_FILE = os.path.join(BRIDGE_DIR, "devices.json")
 STATE_FILE   = os.path.join(BRIDGE_DIR, "watchdog_state.json")
 
 BRIDGE_URL         = "http://127.0.0.1:8792/"
-OFFLINE_MINUTES    = 5   # device considered offline after this many minutes
+# 20, not 5: heartbeats are every 60s, so a brief network hiccup (laptop sleep,
+# Tailscale re-handshake, WiFi blip) shouldn't count as "offline" and spam a
+# notification for it. Keep in sync with bridge/server.py's register_device().
+OFFLINE_MINUTES    = 20  # device considered offline after this many minutes
 
 
 def load_env():
