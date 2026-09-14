@@ -1,5 +1,4 @@
 {
-  "generated": "2026-09-06T21:35:10Z",
   "note_count": 25,
   "nodes": [
     {
@@ -178,6 +177,7 @@
         "pr-4-bugs-varios",
         "pr-5-telegram-ollama-jobs",
         "pr-6-hardening",
+        "pr-9-fallback-nube",
         "bridge",
         "device-agent",
         "orbe",
@@ -722,6 +722,10 @@
     [
       "moc",
       "pr-6-hardening"
+    ],
+    [
+      "moc",
+      "pr-9-fallback-nube"
     ],
     [
       "moc",
